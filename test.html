@@ -702,21 +702,14 @@ function showTrip() {
     <div class="kind">출발과 도착</div>
     <h2>${esc(A.name)}에서 ${esc(B.name)}까지</h2>
     <div class="btns"><a class="btn" href="${walkUrl(B, A)}" target="_blank" rel="noopener">구글맵 도보 길찾기</a></div>
-    <div class="btns"><a class="btn primary" id="genOpen" href="${genUrl(A, B)}" target="_blank" rel="noopener">안내문 만들기</a></div>
-    <div class="btns">
-      <button class="btn small" type="button" data-copyname="${esc(A.name)}">출발지 이름 복사</button>
-      <button class="btn small" type="button" data-copyname="${esc(B.name)}">도착지 이름 복사</button>
-    </div>
+    <div class="btns"><a class="btn primary" href="${GEN_URL}" target="_blank" rel="noopener" data-copyname="${esc(A.name + ' → ' + B.name)}">안내문 만들기</a></div>
+    <p class="empty" style="margin:-10px 0 18px">누르면 출발지·도착지가 복사돼요. 생성기 출발지 칸에 붙여넣기만 하세요.</p>
     <div class="sec"><h3>무료 셔틀</h3>${html}</div>
   `, null);
 }
 
 /* ---------- 카톡 생성기 연결 (테스트) ---------- */
 const GEN_URL = 'https://claude.ai/artifact/2RrXUsdLNaMsAtnLneuzs6';
-function genUrl(A, B) {
-  const q = 'from=' + encodeURIComponent(A.name) + '&to=' + encodeURIComponent(B.name);
-  return GEN_URL + '?' + q + '#' + q;
-}
 async function copyName(text) {
   try { await navigator.clipboard.writeText(text); return true; }
   catch (e) {
@@ -734,7 +727,7 @@ document.addEventListener('click', async e => {
   const ok = await copyName(b.dataset.copyname);
   const old = b.textContent;
   b.textContent = ok ? '복사됨' : '복사 실패';
-  setTimeout(() => { b.textContent = old; }, 1500);
+  setTimeout(() => { b.textContent = old; }, 2000);
 });
 
 /* ---------- 시작 ---------- */
