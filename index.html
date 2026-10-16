@@ -229,7 +229,7 @@ const DATA_URL = 'https://script.google.com/macros/s/AKfycbxr9tJ3IIKOK4wfRQolBNy
 const CATS = [
   { key: '호텔',       color: '#B4532A' },
   { key: '출입국',     color: '#2F4F7A' },
-  { key: '명소',     color: '#5E7F3E' },
+  { key: '명소',       color: '#5E7F3E' },
   { key: '지역',       color: '#8A5A9E' },
   { key: '기타',       color: '#7A7268' },
   { key: '버스 정류장', color: '#2B2724', stop: true }
@@ -502,6 +502,8 @@ function openPlace(place) {
   const cat = catOf(place.cat);
   const pos = { lat: place.lat, lng: place.lng };
   const rate = safeUrl(place.rate);
+  const mapLink = safeUrl(place.map);
+  const info = safeUrl(place.info);
   const isFrom = state.from && state.from.name === place.name;
   const isTo = state.to && state.to.name === place.name;
 
@@ -531,7 +533,10 @@ function openPlace(place) {
     ${place.desc ? `<p class="desc">${esc(place.desc)}</p>` : ''}
     <div class="btns">
       ${rate ? `<a class="btn primary" href="${esc(rate)}" target="_blank" rel="sponsored noopener">객실 요금 보기</a>` : ''}
-      <a class="btn" href="${walkUrl(pos)}" target="_blank" rel="noopener">구글맵 도보 길찾기</a>
+      ${mapLink
+        ? `<a class="btn" href="${esc(mapLink)}" target="_blank" rel="noopener">구글맵에서 보기</a>`
+        : `<a class="btn" href="${walkUrl(pos)}" target="_blank" rel="noopener">구글맵 도보 길찾기</a>`}
+      ${info ? `<a class="btn" href="${esc(info)}" target="_blank" rel="noopener">정보 보기</a>` : ''}
       <button class="btn${isFrom ? ' on' : ''}" type="button" id="setFrom">${isFrom ? '출발지로 고름' : '여기서 출발'}</button>
       <button class="btn${isTo ? ' on' : ''}" type="button" id="setTo">${isTo ? '도착지로 고름' : '여기로 도착'}</button>
     </div>
