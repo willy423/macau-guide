@@ -168,6 +168,23 @@
   .status[hidden] { display: none; }
   .status button { background: #fff; color: var(--ink); border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
 
+  /* 핀 말풍선 */
+  .iw { font-family: var(--sans); color: var(--ink); padding: 2px 4px 4px; max-width: 300px; }
+  .iw-t { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.35; margin: 0 0 2px; word-break: keep-all; }
+  .iw-s { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .iw-b { display: flex; flex-wrap: wrap; gap: 6px; }
+  .iw-b a, .iw-b button {
+    display: inline-flex; align-items: center; min-height: 32px; padding: 0 11px;
+    border: 0; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 700;
+    color: #fff; text-decoration: none; cursor: pointer;
+  }
+  .iw-b .go { background: #2E7D4F; }
+  .iw-b .arrive { background: #2F4F7A; }
+  .iw-b .shuttle { background: var(--accent); }
+  .iw-b .rate { background: #6B4FA0; }
+  .iw-b .plain { background: #fff; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  .iw-b .on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ink); }
+
   @media (min-width: 820px) {
     :root { --top-h: 62px; }
     .top { display: flex; align-items: center; gap: 20px; padding: 12px 20px; }
@@ -253,7 +270,8 @@ const state = {
   data: null,
   markers: [],              // { marker, cat }
   hidden: new Set(),
-  from: null, to: null      // 장소 객체
+  from: null, to: null,     // 장소 객체
+  iw: null, popup: null     // 핀 말풍선, 지금 열린 말풍선 다시 그리기
 };
 
 const $ = (id) => document.getElementById(id);
@@ -372,7 +390,9 @@ window.initMap = async function () {
       { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6F675E' }] }
     ]
   });
-  state.map.addListener('click', closeSheet);
+  state.iw = new google.maps.InfoWindow({ maxWidth: 320 });
+  state.iw.addListener('closeclick', () => { state.popup = null; });
+  state.map.addListener('click', () => { state.iw.close(); state.popup = null; closeSheet(); });
   setTimeout(() => google.maps.event.trigger(state.map, 'resize'), 300);
   if (state.data) drawMarkers();
 };
@@ -410,7 +430,7 @@ function drawMarkers() {
       position: { lat: stop.lat, lng: stop.lng }, map: state.map,
       icon: stopIcon(), title: stop.ko || stop.zh || stop.id, zIndex: 1
     });
-    marker.addListener('click', () => openStop(stop));
+    marker.addListener('click', () => stopPopup(stop, marker));
     state.markers.push({ marker, cat: '버스 정류장' });
     bounds.extend(marker.getPosition()); count++;
   });
@@ -421,7 +441,7 @@ function drawMarkers() {
       position: { lat: place.lat, lng: place.lng }, map: state.map,
       icon: pinIcon(colorOf(cat)), title: place.name, zIndex: 10
     });
-    marker.addListener('click', () => openPlace(place));
+    marker.addListener('click', () => placePopup(place, marker));
     state.markers.push({ marker, cat });
     bounds.extend(marker.getPosition()); count++;
   });
@@ -547,13 +567,75 @@ function openPlace(place) {
   $('setTo').onclick = () => setTrip('to', place);
 }
 
+/* ---------- 핀 말풍선 ---------- */
+function showPopup(marker, title, sub, buttons) {
+  const el = document.createElement('div');
+  el.className = 'iw';
+  el.innerHTML = `<div class="iw-t">${esc(title)}</div>${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}`;
+  const row = document.createElement('div');
+  row.className = 'iw-b';
+  buttons.filter(Boolean).forEach(b => {
+    let x;
+    if (b.href) {
+      x = document.createElement('a');
+      x.href = b.href; x.target = '_blank';
+      x.rel = b.sponsored ? 'sponsored noopener' : 'noopener';
+    } else {
+      x = document.createElement('button');
+      x.type = 'button';
+      x.addEventListener('click', b.click);
+    }
+    x.className = (b.cls || 'plain') + (b.on ? ' on' : '');
+    x.textContent = b.label;
+    row.appendChild(x);
+  });
+  el.appendChild(row);
+  state.iw.setContent(el);
+  state.iw.open({ map: state.map, anchor: marker });
+}
+
+function placePopup(place, marker) {
+  const cat = catOf(place.cat);
+  const rate = safeUrl(place.rate);
+  const mapLink = safeUrl(place.map);
+  const info = safeUrl(place.info);
+  const hasShuttle = state.data.shuttles.some(s =>
+    norm(s.hotel) === norm(place.name) || destHas(s.dest, place.name));
+  const isFrom = state.from && state.from.name === place.name;
+  const isTo = state.to && state.to.name === place.name;
+  state.popup = () => placePopup(place, marker);
+  showPopup(marker, place.name, cat, [
+    { label: '출발', cls: 'go', on: isFrom, click: () => setTrip('from', place) },
+    { label: '도착', cls: 'arrive', on: isTo, click: () => setTrip('to', place) },
+    hasShuttle ? { label: '셔틀정보', cls: 'shuttle', click: () => openPlace(place) } : null,
+    rate ? { label: '객실 요금 확인', cls: 'rate', href: rate, sponsored: true } : null,
+    mapLink ? { label: '구글맵', href: mapLink } : null,
+    info ? { label: '정보', href: info } : null
+  ]);
+}
+
+function stopPopup(stop, marker) {
+  state.popup = null;
+  const title = stop.ko || stop.zh || stop.id;
+  showPopup(marker, title, [stop.id, stop.zh].filter(Boolean).join('  '), [
+    { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
+    { label: '구글맵 도보', href: walkUrl(stop) }
+  ]);
+}
+
 /* ---------- 출발·도착 ---------- */
 function setTrip(which, place) {
   if (which === 'from') { state.from = place; if (state.to && state.to.name === place.name) state.to = null; }
   else { state.to = place; if (state.from && state.from.name === place.name) state.from = null; }
   renderTripBar();
-  if (state.from && state.to) showTrip();
-  else openPlace(place);
+  if (state.from && state.to) {
+    if (state.iw) state.iw.close();
+    state.popup = null;
+    showTrip();
+    return;
+  }
+  if ($('sheet').classList.contains('open')) openPlace(place);
+  if (state.popup) state.popup();
 }
 function renderTripBar() {
   $('trip').hidden = !(state.from || state.to);
