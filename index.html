@@ -332,13 +332,14 @@ function applyVisibility() {
 
 /* ---------- 핀 모양 ---------- */
 function pinIcon(color) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">
-    <path d="M15 1C7.3 1 1 7.2 1 14.8 1 25.3 15 39 15 39s14-13.7 14-24.2C29 7.2 22.7 1 15 1z" fill="${color}" stroke="#fff" stroke-width="2"/>
-    <circle cx="15" cy="15" r="5" fill="#fff"/></svg>`;
+  // 구글맵 기본 핀 모양 (가늘고 작은 핀)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="34" viewBox="0 0 22 34">
+    <path d="M11 1C5.5 1 1 5.4 1 10.9c0 7.4 8.6 14.9 9.4 21.6.1.5.4.8.6.8s.5-.3.6-.8C12.4 25.8 21 18.3 21 10.9 21 5.4 16.5 1 11 1z" fill="${color}" stroke="rgba(0,0,0,.35)" stroke-width="1"/>
+    <circle cx="11" cy="11" r="3.6" fill="rgba(0,0,0,.45)"/></svg>`;
   return {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-    scaledSize: new google.maps.Size(30, 40),
-    anchor: new google.maps.Point(15, 39)
+    scaledSize: new google.maps.Size(22, 34),
+    anchor: new google.maps.Point(11, 33)
   };
 }
 function stopIcon() {
@@ -379,16 +380,7 @@ window.initMap = async function () {
     center: MACAU, zoom: 13,
     gestureHandling: 'greedy',
     clickableIcons: false,
-    mapTypeControl: false, streetViewControl: false, fullscreenControl: false,
-    styles: [
-      { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
-      { featureType: 'poi.business', stylers: [{ visibility: 'off' }] },
-      { featureType: 'transit.station.bus', stylers: [{ visibility: 'off' }] },
-      { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#F2EDE3' }] },
-      { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#CFDFE2' }] },
-      { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#FFFFFF' }] },
-      { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#6F675E' }] }
-    ]
+    mapTypeControl: false, streetViewControl: false, fullscreenControl: false
   });
   state.iw = new google.maps.InfoWindow({ maxWidth: 320 });
   state.iw.addListener('closeclick', () => { state.popup = null; });
