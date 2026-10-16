@@ -200,6 +200,7 @@
   .iw-b .arrive { background: #2F4F7A; }
   .iw-b .shuttle { background: var(--accent); }
   .iw-b .rate { background: #6B4FA0; }
+  .iw-b .xfer { background: #B4541F; }
   .iw-b .plain { background: #fff; color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
   .iw-b .on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--ink); }
 
@@ -238,6 +239,18 @@
   <div class="acts">
     <button class="btn small" id="tripSwap" type="button">바꾸기</button>
     <button class="btn small" id="tripClear" type="button">지우기</button>
+  </div>
+</div>
+
+<div class="trip" id="btrip" hidden>
+  <div class="pts">
+    <div><span>출발</span><b id="bFrom">정류장 고르기</b></div>
+    <div id="bXrow" hidden><span>환승</span><b id="bX"></b></div>
+    <div><span>도착</span><b id="bTo">정류장 고르기</b></div>
+  </div>
+  <div class="acts">
+    <a class="btn small primary" id="bGo" target="_blank" rel="noopener" style="display:none">안내문 만들기</a>
+    <button class="btn small" id="bClear" type="button">지우기</button>
   </div>
 </div>
 
@@ -641,9 +654,13 @@ function placePopup(place, marker) {
 }
 
 function stopPopup(stop, marker) {
-  state.popup = null;
+  const b = state.bs, same = s => s && s.id === stop.id;
+  state.popup = () => stopPopup(stop, marker);
   const title = stop.ko || stop.zh || stop.id;
   showPopup(marker, title, [stop.id, stop.zh].filter(Boolean).join('  '), [
+    { label: '출발', cls: 'go', on: same(b.from), click: () => setStopTrip('from', stop) },
+    { label: '환승', cls: 'xfer', on: b.x.some(same), click: () => setStopTrip('x', stop) },
+    { label: '도착', cls: 'arrive', on: same(b.to), click: () => setStopTrip('to', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
     { label: '구글맵 도보', href: walkUrl(stop) }
   ]);
@@ -664,6 +681,7 @@ function setTrip(which, place) {
   if (state.popup) state.popup();
 }
 function renderTripBar() {
+  if (state.from || state.to) { state.bs = { from: null, x: [], to: null }; $('btrip').hidden = true; }
   $('trip').hidden = !(state.from || state.to);
   $('tripFrom').textContent = state.from ? state.from.name : '지도에서 고르기';
   $('tripTo').textContent = state.to ? state.to.name : '지도에서 고르기';
@@ -710,6 +728,53 @@ function showTrip() {
 
 /* ---------- 카톡 생성기 연결 (테스트) ---------- */
 const GEN_URL = 'https://claude.ai/artifact/2RrXUsdLNaMsAtnLneuzs6';
+
+/* ---------- 버스 정류장 출발·환승·도착 (테스트) ---------- */
+state.bs = { from: null, x: [], to: null };
+const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
+function setStopTrip(which, stop) {
+  if (state.from || state.to) { state.from = state.to = null; renderTripBar(); closeSheet(); }
+  const b = state.bs, same = s => s && s.id === stop.id;
+  if (which === 'x') {
+    const i = b.x.findIndex(same);
+    if (i > -1) b.x.splice(i, 1);
+    else if (b.x.length >= 2) b.x[1] = stop;
+    else b.x.push(stop);
+    if (same(b.from)) b.from = null;
+    if (same(b.to)) b.to = null;
+  } else {
+    b[which] = same(b[which]) ? null : stop;
+    const other = which === 'from' ? 'to' : 'from';
+    if (same(b[other])) b[other] = null;
+    b.x = b.x.filter(s => !same(s));
+  }
+  renderBusBar();
+  if (state.popup) state.popup();
+}
+function renderBusBar() {
+  const b = state.bs;
+  $('btrip').hidden = !(b.from || b.to || b.x.length);
+  $('bFrom').textContent = b.from ? stopLabel(b.from) : '정류장 고르기';
+  $('bTo').textContent = b.to ? stopLabel(b.to) : '정류장 고르기';
+  $('bXrow').hidden = !b.x.length;
+  $('bX').textContent = b.x.map(stopLabel).join(' → 걸어서 → ');
+  const go = $('bGo');
+  if (b.from && b.to) {
+    const codes = [b.from.id];
+    if (b.x.length) codes.push(b.x.map(s => s.id).join('/'));
+    codes.push(b.to.id);
+    go.href = GEN_URL;
+    go.dataset.copyname = codes.join(' → ');
+    go.style.display = '';
+  } else {
+    go.style.display = 'none';
+  }
+}
+$('bClear').addEventListener('click', () => {
+  state.bs = { from: null, x: [], to: null };
+  renderBusBar();
+  if (state.popup) state.popup();
+});
 async function copyName(text) {
   try { await navigator.clipboard.writeText(text); return true; }
   catch (e) {
