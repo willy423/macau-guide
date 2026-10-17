@@ -65,6 +65,41 @@
   .chip[aria-pressed="false"] { background: var(--paper-2); color: var(--muted); }
   .chip[aria-pressed="false"] .dot { opacity: .3; }
 
+  /* 검색 */
+  .toprow { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+  .toprow h1 { margin: 0; flex: none; }
+  .search { position: relative; flex: 1; min-width: 0; }
+  .search input {
+    width: 100%; height: 36px; box-sizing: border-box;
+    padding: 0 34px 0 12px; border: 1px solid var(--line); border-radius: 18px;
+    background: #fff; color: var(--ink); font: inherit; font-size: 16px;
+    -webkit-appearance: none; appearance: none;
+  }
+  .search input:focus { outline: none; border-color: var(--ink); }
+  .search input::-webkit-search-cancel-button { display: none; }
+  .search .clear {
+    position: absolute; right: 4px; top: 4px; width: 28px; height: 28px;
+    border: 0; border-radius: 50%; background: transparent; color: var(--muted);
+    font-size: 16px; line-height: 28px; cursor: pointer; padding: 0;
+  }
+  .sresults {
+    position: fixed; z-index: 40; left: 12px; right: 12px;
+    top: calc(var(--top-h) + env(safe-area-inset-top, 0px) + 4px);
+    max-height: min(60vh, 420px); overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.15); margin: 0; padding: 4px 0; list-style: none;
+  }
+  .sresults[hidden] { display: none; }
+  .sresults li button {
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+    padding: 8px 14px; border: 0; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+  }
+  .sresults li button:active, .sresults li button:hover { background: var(--paper-2); }
+  .sresults .sd { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+  .sresults .st { display: block; font-size: 15px; line-height: 1.35; }
+  .sresults .ss { display: block; font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .sresults .none { padding: 12px 14px; font-size: 14px; color: var(--muted); }
+
   /* 지도 */
   #map { position: fixed; left: 0; right: 0; top: calc(var(--top-h) + env(safe-area-inset-top, 0px)); height: calc(100vh - var(--top-h) - env(safe-area-inset-top, 0px)); height: calc(100dvh - var(--top-h) - env(safe-area-inset-top, 0px)); min-height: 300px; }
 
@@ -82,6 +117,7 @@
   .trip .pts span { color: var(--muted); font-size: 12px; margin-right: 6px; }
   .trip .pts b { font-weight: 500; }
   .trip .acts { display: flex; gap: 6px; }
+  .trip .go-row { grid-column: 1 / -1; width: 100%; text-align: center; box-sizing: border-box; }
 
   /* 정보 창 */
   .sheet {
@@ -208,6 +244,9 @@
     :root { --top-h: 62px; }
     .top { display: flex; align-items: center; gap: 20px; padding: 12px 20px; }
     .top h1 { margin: 0; flex: none; }
+    .toprow { margin: 0; gap: 16px; }
+    .search { flex: none; width: 260px; }
+    .sresults { left: 16px; right: auto; width: 420px; }
     .legend { margin: 0; padding: 0; }
     .sheet {
       top: calc(var(--top-h) + 12px); bottom: 12px; left: 12px; right: auto;
@@ -225,10 +264,17 @@
 <body>
 
 <header class="top">
-  <h1>마카오 교통 지도</h1>
+  <div class="toprow">
+    <h1>마카오 교통 지도</h1>
+    <div class="search" role="search">
+      <input type="search" id="q" placeholder="장소·정류장 검색" autocomplete="off" enterkeyhint="search" aria-label="장소나 정류장 검색" aria-controls="sresults">
+      <button class="clear" id="qClear" type="button" aria-label="검색어 지우기" hidden>✕</button>
+    </div>
+  </div>
   <div class="legend" id="legend" role="group" aria-label="지도에 표시할 종류"></div>
 </header>
 
+<ul class="sresults" id="sresults" hidden></ul>
 <div id="map" aria-label="마카오 지도"></div>
 
 <div class="trip" id="trip" hidden>
@@ -240,18 +286,7 @@
     <button class="btn small" id="tripSwap" type="button">바꾸기</button>
     <button class="btn small" id="tripClear" type="button">지우기</button>
   </div>
-</div>
-
-<div class="trip" id="btrip" hidden>
-  <div class="pts">
-    <div><span>출발</span><b id="bFrom">정류장 고르기</b></div>
-    <div id="bXrow" hidden><span>환승</span><b id="bX"></b></div>
-    <div><span>도착</span><b id="bTo">정류장 고르기</b></div>
-  </div>
-  <div class="acts">
-    <a class="btn small primary" id="bGo" target="_blank" rel="noopener" style="display:none">안내문 만들기</a>
-    <button class="btn small" id="bClear" type="button">지우기</button>
-  </div>
+  <a class="btn small primary go-row" id="tripGo" target="_blank" rel="noopener" style="display:none">안내문 만들기</a>
 </div>
 
 <aside class="sheet" id="sheet" aria-hidden="true">
@@ -279,7 +314,8 @@ const CATS = [
   { key: '출입국',     color: '#00E64D' },  // 초록
   { key: '명소',       color: '#FDF569' },  // 노랑
   { key: '지역',       color: '#FF6FD8' },  // 분홍
-  { key: '기타',       color: '#FD7567' },  // 빨강
+  { key: '맛집',       color: '#FF8C1A' },  // 오렌지
+  { key: '기타',       color: '#9B6BE0' },  // 보라
   { key: '버스 정류장', color: '#2B2724', stop: true }
 ];
 
@@ -301,7 +337,7 @@ const state = {
   data: null,
   markers: [],              // { marker, cat }
   hidden: new Set(),
-  from: null, to: null,     // 장소 객체
+  from: null, to: null,     // { k: "place" 또는 "stop", v: 장소·정류장 }
   iw: null, popup: null     // 핀 말풍선, 지금 열린 말풍선 다시 그리기
 };
 
@@ -312,7 +348,7 @@ const esc = (s) => String(s == null ? '' : s)
 const hasPos = (o) => typeof o.lat === 'number' && typeof o.lng === 'number' && !isNaN(o.lat) && !isNaN(o.lng);
 const safeUrl = (u) => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
 const catOf = (c) => CATS.find(x => !x.stop && x.key === c) ? c : '기타';
-const colorOf = (c) => (CATS.find(x => x.key === c) || CATS[4]).color;
+const colorOf = (c) => (CATS.find(x => x.key === c) || CATS.find(x => x.key === '기타')).color;
 
 /* 이름 비교: 괄호 안, 띄어쓰기, '순환', '연결' 같은 말 빼고 비교 */
 function norm(s) {
@@ -360,6 +396,70 @@ function buildLegend() {
 function applyVisibility() {
   state.markers.forEach(m => m.marker.setMap(state.hidden.has(m.cat) ? null : state.map));
 }
+
+/* ---------- 검색 ---------- */
+const sKey = t => String(t || '').toLowerCase().replace(/[\s·\-\/()（）]/g, '');
+function searchItems(q) {
+  const k = sKey(q);
+  if (!k) return [];
+  const out = [];
+  state.markers.forEach(m => {
+    const it = m.place || m.stop;
+    if (!it) return;
+    const names = m.place ? [it.name] : [it.id, it.ko, it.zh, it.pt];
+    let best = -1;
+    names.forEach(n => {
+      const v = sKey(n);
+      if (!v) return;
+      if (v === k) best = Math.max(best, 3);
+      else if (v.startsWith(k)) best = Math.max(best, 2);
+      else if (v.includes(k)) best = Math.max(best, 1);
+    });
+    if (best >= 0) out.push({ m, score: best + (m.place ? 0.5 : 0) });
+  });
+  return out.sort((a, b) => b.score - a.score).slice(0, 20).map(x => x.m);
+}
+function renderResults() {
+  const q = $('q').value;
+  $('qClear').hidden = !q;
+  const box = $('sresults');
+  if (!q.trim()) { box.hidden = true; box.innerHTML = ''; return; }
+  const list = searchItems(q);
+  box.innerHTML = list.length ? list.map((m, i) => {
+    const it = m.place || m.stop;
+    const title = m.place ? it.name : (it.ko || it.zh || it.id);
+    const sub = m.place ? m.cat : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
+    return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${m.place ? colorOf(m.cat) : '#2B2724'}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
+  }).join('') : '<li class="none">시트에 없는 이름이에요. 시트에 추가하면 검색돼요.</li>';
+  box.hidden = false;
+  box.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', () => pickResult(list[+b.dataset.i])));
+}
+function pickResult(m) {
+  if (state.hidden.has(m.cat)) {
+    state.hidden.delete(m.cat);
+    const chip = $('legend').querySelector(`.chip[data-cat="${m.cat}"]`);
+    if (chip) chip.setAttribute('aria-pressed', 'true');
+    applyVisibility();
+  }
+  $('sresults').hidden = true;
+  $('q').blur();
+  state.map.panTo(m.marker.getPosition());
+  if ((state.map.getZoom() || 0) < 17) state.map.setZoom(17);
+  if (m.place) placePopup(m.place, m.marker); else stopPopup(m.stop, m.marker);
+}
+$('q').addEventListener('input', renderResults);
+$('q').addEventListener('focus', () => { if ($('q').value.trim()) renderResults(); });
+$('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const first = searchItems($('q').value)[0];
+    if (first) pickResult(first);
+  } else if (e.key === 'Escape') { $('sresults').hidden = true; $('q').blur(); }
+});
+$('qClear').addEventListener('click', () => { $('q').value = ''; renderResults(); $('q').focus(); });
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search') && !e.target.closest('#sresults')) $('sresults').hidden = true;
+});
 
 /* ---------- 지도 위 범례 상자 ---------- */
 function addMapLegend() {
@@ -470,7 +570,7 @@ function drawMarkers() {
       icon: stopIcon(), title: stop.ko || stop.zh || stop.id, zIndex: 1
     });
     marker.addListener('click', () => stopPopup(stop, marker));
-    state.markers.push({ marker, cat: '버스 정류장' });
+    state.markers.push({ marker, cat: '버스 정류장', stop });
     bounds.extend(marker.getPosition()); count++;
   });
 
@@ -481,7 +581,7 @@ function drawMarkers() {
       icon: pinIcon(colorOf(cat)), title: place.name, zIndex: 10
     });
     marker.addListener('click', () => placePopup(place, marker));
-    state.markers.push({ marker, cat });
+    state.markers.push({ marker, cat, place });
     bounds.extend(marker.getPosition()); count++;
   });
 
@@ -563,8 +663,8 @@ function openPlace(place) {
   const rate = safeUrl(place.rate);
   const mapLink = safeUrl(place.map);
   const info = safeUrl(place.info);
-  const isFrom = state.from && state.from.name === place.name;
-  const isTo = state.to && state.to.name === place.name;
+  const isFrom = tKey(state.from) === 'place:' + place.name;
+  const isTo = tKey(state.to) === 'place:' + place.name;
 
   let body = '';
   if (cat === '호텔') {
@@ -602,8 +702,8 @@ function openPlace(place) {
     ${body}
   `, pos);
 
-  $('setFrom').onclick = () => setTrip('from', place);
-  $('setTo').onclick = () => setTrip('to', place);
+  $('setFrom').onclick = () => setTrip('from', 'place', place);
+  $('setTo').onclick = () => setTrip('to', 'place', place);
 }
 
 /* ---------- 핀 말풍선 ---------- */
@@ -640,36 +740,45 @@ function placePopup(place, marker) {
   const info = safeUrl(place.info);
   const hasShuttle = state.data.shuttles.some(s =>
     norm(s.hotel) === norm(place.name) || destHas(s.dest, place.name));
-  const isFrom = state.from && state.from.name === place.name;
-  const isTo = state.to && state.to.name === place.name;
+  const isFrom = tKey(state.from) === 'place:' + place.name;
+  const isTo = tKey(state.to) === 'place:' + place.name;
   state.popup = () => placePopup(place, marker);
   showPopup(marker, place.name, cat, [
-    { label: '출발', cls: 'go', on: isFrom, click: () => setTrip('from', place) },
-    { label: '도착', cls: 'arrive', on: isTo, click: () => setTrip('to', place) },
+    { label: '출발', cls: 'go', on: isFrom, click: () => setTrip('from', 'place', place) },
+    { label: '도착', cls: 'arrive', on: isTo, click: () => setTrip('to', 'place', place) },
     hasShuttle ? { label: '셔틀정보', cls: 'shuttle', click: () => openPlace(place) } : null,
     rate ? { label: '객실 요금 확인', cls: 'rate', href: rate, sponsored: true } : null,
     mapLink ? { label: '구글맵', href: mapLink } : null,
-    info ? { label: '정보', href: info } : null
+    info ? { label: cat === '맛집' ? '메뉴' : '정보', href: info } : null
   ]);
 }
 
 function stopPopup(stop, marker) {
-  const b = state.bs, same = s => s && s.id === stop.id;
+  const same = t => tKey(t) === 'stop:' + stop.id;
   state.popup = () => stopPopup(stop, marker);
   const title = stop.ko || stop.zh || stop.id;
   showPopup(marker, title, [stop.id, stop.zh].filter(Boolean).join('  '), [
-    { label: '출발', cls: 'go', on: same(b.from), click: () => setStopTrip('from', stop) },
-    { label: '환승', cls: 'xfer', on: b.x.some(same), click: () => setStopTrip('x', stop) },
-    { label: '도착', cls: 'arrive', on: same(b.to), click: () => setStopTrip('to', stop) },
+    { label: '출발', cls: 'go', on: same(state.from), click: () => setTrip('from', 'stop', stop) },
+    { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'stop', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
     { label: '구글맵 도보', href: walkUrl(stop) }
   ]);
 }
 
-/* ---------- 출발·도착 ---------- */
-function setTrip(which, place) {
-  if (which === 'from') { state.from = place; if (state.to && state.to.name === place.name) state.to = null; }
-  else { state.to = place; if (state.from && state.from.name === place.name) state.from = null; }
+/* ---------- 출발·도착 (장소·버스 정류장 섞어 고르기) ---------- */
+const GEN_URL = 'https://claude.ai/artifact/AtV2AEvEyJksYiBGDE2DsK'; // 테스트 생성기
+const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
+const tKey = t => t ? t.k + ':' + (t.k === 'stop' ? t.v.id : t.v.name) : '';
+const tLabel = t => t.k === 'stop' ? stopLabel(t.v) : t.v.name;
+// 생성기에 붙여넣는 글: 장소는 이름, 정류장은 한국어 이름 + 중문 이름 + [번호] (예: 마각 교통허브 媽閣交通樞紐 [M3])
+// 생성기가 이름은 출발지·도착지 칸에, [번호]는 승차·하차 정류장 칸에 나눠 넣습니다.
+const stopCopy = s => ([s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') + ' [' + s.id + ']').trim();
+const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : t.v.name;
+
+function setTrip(which, k, v) {
+  const t = { k, v }, key = tKey(t), other = which === 'from' ? 'to' : 'from';
+  state[which] = tKey(state[which]) === key ? null : t;
+  if (tKey(state[other]) === key) state[other] = null;
   renderTripBar();
   if (state.from && state.to) {
     if (state.iw) state.iw.close();
@@ -677,104 +786,70 @@ function setTrip(which, place) {
     showTrip();
     return;
   }
-  if ($('sheet').classList.contains('open')) openPlace(place);
+  if (k === 'place' && $('sheet').classList.contains('open')) openPlace(v);
   if (state.popup) state.popup();
 }
 function renderTripBar() {
-  if (state.from || state.to) { state.bs = { from: null, x: [], to: null }; $('btrip').hidden = true; }
-  $('trip').hidden = !(state.from || state.to);
-  $('tripFrom').textContent = state.from ? state.from.name : '지도에서 고르기';
-  $('tripTo').textContent = state.to ? state.to.name : '지도에서 고르기';
+  const A = state.from, B = state.to;
+  $('trip').hidden = !(A || B);
+  $('tripFrom').textContent = A ? tLabel(A) : '지도에서 고르기';
+  $('tripTo').textContent = B ? tLabel(B) : '지도에서 고르기';
+  const go = $('tripGo');
+  if (A && B) {
+    go.href = GEN_URL;
+    go.dataset.copyname = tCopy(A) + ' → ' + tCopy(B);
+    go.style.display = '';
+  } else {
+    go.style.display = 'none';
+  }
 }
-$('tripClear').addEventListener('click', () => { state.from = state.to = null; renderTripBar(); closeSheet(); });
+$('tripClear').addEventListener('click', () => {
+  state.from = state.to = null;
+  renderTripBar(); closeSheet();
+  if (state.popup) state.popup();
+});
 $('tripSwap').addEventListener('click', () => {
   [state.from, state.to] = [state.to, state.from];
   renderTripBar();
   if (state.from && state.to) showTrip();
 });
 $('trip').addEventListener('click', e => {
-  if (e.target.closest('button')) return;
+  if (e.target.closest('button, a')) return;
   if (state.from && state.to) showTrip();
 });
 
 function showTrip() {
   const A = state.from, B = state.to;
-  const sh = state.data.shuttles;
-  // A 호텔에서 B로 가는 셔틀 (호텔발 시간)
-  const out = sh.filter(s => norm(s.hotel) === norm(A.name) && destHas(s.dest, B.name));
-  // B 호텔에서 A를 오가는 셔틀 → A에서 B로 갈 때는 호텔행 시간
-  const back = sh.filter(s => norm(s.hotel) === norm(B.name) && destHas(s.dest, A.name));
-
-  let html = '';
-  if (out.length) {
-    html += `<div class="dest"><h4>${esc(A.name)} 셔틀</h4>
-      ${out.map(r => `<div class="from">${esc(A.name)}에서 탑승</div>${runHtml(r, 'from')}`).join('')}</div>`;
+  let shut = '';
+  if (A.k === 'place' && B.k === 'place') {
+    const sh = state.data.shuttles;
+    // A 호텔에서 B로 가는 셔틀 (호텔발 시간)
+    const out = sh.filter(s => norm(s.hotel) === norm(A.v.name) && destHas(s.dest, B.v.name));
+    // B 호텔에서 A를 오가는 셔틀 → A에서 B로 갈 때는 호텔행 시간
+    const back = sh.filter(s => norm(s.hotel) === norm(B.v.name) && destHas(s.dest, A.v.name));
+    let html = '';
+    if (out.length) {
+      html += `<div class="dest"><h4>${esc(A.v.name)} 셔틀</h4>
+        ${out.map(r => `<div class="from">${esc(A.v.name)}에서 탑승</div>${runHtml(r, 'from')}`).join('')}</div>`;
+    }
+    if (back.length) {
+      html += `<div class="dest"><h4>${esc(B.v.name)} 셔틀</h4>
+        ${back.map(r => `<div class="from">${esc(A.v.name)}에서 탑승 (${esc(B.v.name)}행)</div>${runHtml(r, 'to')}`).join('')}</div>`;
+    }
+    if (!html) html = '<p class="empty">두 곳을 바로 잇는 셔틀이 시트에 없습니다.</p>';
+    shut = `<div class="sec"><h3>무료 셔틀</h3>${html}</div>`;
   }
-  if (back.length) {
-    html += `<div class="dest"><h4>${esc(B.name)} 셔틀</h4>
-      ${back.map(r => `<div class="from">${esc(A.name)}에서 탑승 (${esc(B.name)}행)</div>${runHtml(r, 'to')}`).join('')}</div>`;
-  }
-  if (!html) html = '<p class="empty">두 곳을 바로 잇는 셔틀이 시트에 없습니다.</p>';
 
   openSheet(`
     <div class="kind">출발과 도착</div>
-    <h2>${esc(A.name)}에서 ${esc(B.name)}까지</h2>
-    <div class="btns"><a class="btn" href="${walkUrl(B, A)}" target="_blank" rel="noopener">구글맵 도보 길찾기</a></div>
-    <div class="btns"><a class="btn primary" href="${GEN_URL}" target="_blank" rel="noopener" data-copyname="${esc(A.name + ' → ' + B.name)}">안내문 만들기</a></div>
+    <h2>${esc(tLabel(A))}에서 ${esc(tLabel(B))}까지</h2>
+    <div class="btns"><a class="btn" href="${walkUrl(B.v, A.v)}" target="_blank" rel="noopener">구글맵 도보 길찾기</a></div>
+    <div class="btns"><a class="btn primary" href="${GEN_URL}" target="_blank" rel="noopener" data-copyname="${esc(tCopy(A) + ' → ' + tCopy(B))}">안내문 만들기</a></div>
     <p class="empty" style="margin:-10px 0 18px">누르면 출발지·도착지가 복사돼요. 생성기 출발지 칸에 붙여넣기만 하세요.</p>
-    <div class="sec"><h3>무료 셔틀</h3>${html}</div>
+    ${shut}
   `, null);
 }
 
-/* ---------- 카톡 생성기 연결 (테스트) ---------- */
-const GEN_URL = 'https://claude.ai/artifact/2RrXUsdLNaMsAtnLneuzs6';
-
-/* ---------- 버스 정류장 출발·환승·도착 (테스트) ---------- */
-state.bs = { from: null, x: [], to: null };
-const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
-function setStopTrip(which, stop) {
-  if (state.from || state.to) { state.from = state.to = null; renderTripBar(); closeSheet(); }
-  const b = state.bs, same = s => s && s.id === stop.id;
-  if (which === 'x') {
-    const i = b.x.findIndex(same);
-    if (i > -1) b.x.splice(i, 1);
-    else if (b.x.length >= 2) b.x[1] = stop;
-    else b.x.push(stop);
-    if (same(b.from)) b.from = null;
-    if (same(b.to)) b.to = null;
-  } else {
-    b[which] = same(b[which]) ? null : stop;
-    const other = which === 'from' ? 'to' : 'from';
-    if (same(b[other])) b[other] = null;
-    b.x = b.x.filter(s => !same(s));
-  }
-  renderBusBar();
-  if (state.popup) state.popup();
-}
-function renderBusBar() {
-  const b = state.bs;
-  $('btrip').hidden = !(b.from || b.to || b.x.length);
-  $('bFrom').textContent = b.from ? stopLabel(b.from) : '정류장 고르기';
-  $('bTo').textContent = b.to ? stopLabel(b.to) : '정류장 고르기';
-  $('bXrow').hidden = !b.x.length;
-  $('bX').textContent = b.x.map(stopLabel).join(' → 걸어서 → ');
-  const go = $('bGo');
-  if (b.from && b.to) {
-    const codes = [b.from.id];
-    if (b.x.length) codes.push(b.x.map(s => s.id).join('/'));
-    codes.push(b.to.id);
-    go.href = GEN_URL;
-    go.dataset.copyname = codes.join(' → ');
-    go.style.display = '';
-  } else {
-    go.style.display = 'none';
-  }
-}
-$('bClear').addEventListener('click', () => {
-  state.bs = { from: null, x: [], to: null };
-  renderBusBar();
-  if (state.popup) state.popup();
-});
 async function copyName(text) {
   try { await navigator.clipboard.writeText(text); return true; }
   catch (e) {
