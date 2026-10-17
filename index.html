@@ -855,7 +855,8 @@ const token = x => {
   return x.s.id + ':' + x.d + (g ? ':' + g.pid + ':' + encodeURIComponent(g.name) : '');
 };
 const stopCopy = s => ([s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') + ' [' + token({ s, d: 0 }) + ']').trim();
-const placeCopy = p => p.name + ' [' + nearStops(p).map(token).join('/') + ']';
+/* 장소 탭 C열 구글맵 링크가 있으면 { } 안에 넣어 보냄 → 생성기 '목적지 구글맵 링크' 칸에 자동으로 들어감 */
+const placeCopy = p => { const u = safeUrl(p.map); return p.name + (u ? ' {' + u + '}' : '') + ' [' + nearStops(p).map(token).join('/') + ']'; };
 const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : placeCopy(t.v);
 
 let tripSeq = 0;
