@@ -65,6 +65,41 @@
   .chip[aria-pressed="false"] { background: var(--paper-2); color: var(--muted); }
   .chip[aria-pressed="false"] .dot { opacity: .3; }
 
+  /* 검색 */
+  .toprow { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
+  .toprow h1 { margin: 0; flex: none; }
+  .search { position: relative; flex: 1; min-width: 0; }
+  .search input {
+    width: 100%; height: 36px; box-sizing: border-box;
+    padding: 0 34px 0 12px; border: 1px solid var(--line); border-radius: 18px;
+    background: #fff; color: var(--ink); font: inherit; font-size: 16px;
+    -webkit-appearance: none; appearance: none;
+  }
+  .search input:focus { outline: none; border-color: var(--ink); }
+  .search input::-webkit-search-cancel-button { display: none; }
+  .search .clear {
+    position: absolute; right: 4px; top: 4px; width: 28px; height: 28px;
+    border: 0; border-radius: 50%; background: transparent; color: var(--muted);
+    font-size: 16px; line-height: 28px; cursor: pointer; padding: 0;
+  }
+  .sresults {
+    position: fixed; z-index: 40; left: 12px; right: 12px;
+    top: calc(var(--top-h) + env(safe-area-inset-top, 0px) + 4px);
+    max-height: min(60vh, 420px); overflow-y: auto; -webkit-overflow-scrolling: touch;
+    background: #fff; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.15); margin: 0; padding: 4px 0; list-style: none;
+  }
+  .sresults[hidden] { display: none; }
+  .sresults li button {
+    display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+    padding: 8px 14px; border: 0; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer;
+  }
+  .sresults li button:active, .sresults li button:hover { background: var(--paper-2); }
+  .sresults .sd { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+  .sresults .st { display: block; font-size: 15px; line-height: 1.35; }
+  .sresults .ss { display: block; font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .sresults .none { padding: 12px 14px; font-size: 14px; color: var(--muted); }
+
   /* 지도 */
   #map { position: fixed; left: 0; right: 0; top: calc(var(--top-h) + env(safe-area-inset-top, 0px)); height: calc(100vh - var(--top-h) - env(safe-area-inset-top, 0px)); height: calc(100dvh - var(--top-h) - env(safe-area-inset-top, 0px)); min-height: 300px; }
 
@@ -208,6 +243,9 @@
     :root { --top-h: 62px; }
     .top { display: flex; align-items: center; gap: 20px; padding: 12px 20px; }
     .top h1 { margin: 0; flex: none; }
+    .toprow { margin: 0; gap: 16px; }
+    .search { flex: none; width: 260px; }
+    .sresults { left: 16px; right: auto; width: 420px; }
     .legend { margin: 0; padding: 0; }
     .sheet {
       top: calc(var(--top-h) + 12px); bottom: 12px; left: 12px; right: auto;
@@ -225,10 +263,17 @@
 <body>
 
 <header class="top">
-  <h1>마카오 교통 지도</h1>
+  <div class="toprow">
+    <h1>마카오 교통 지도</h1>
+    <div class="search" role="search">
+      <input type="search" id="q" placeholder="장소·정류장 검색" autocomplete="off" enterkeyhint="search" aria-label="장소나 정류장 검색" aria-controls="sresults">
+      <button class="clear" id="qClear" type="button" aria-label="검색어 지우기" hidden>✕</button>
+    </div>
+  </div>
   <div class="legend" id="legend" role="group" aria-label="지도에 표시할 종류"></div>
 </header>
 
+<ul class="sresults" id="sresults" hidden></ul>
 <div id="map" aria-label="마카오 지도"></div>
 
 <div class="trip" id="trip" hidden>
@@ -362,6 +407,70 @@ function applyVisibility() {
   state.markers.forEach(m => m.marker.setMap(state.hidden.has(m.cat) ? null : state.map));
 }
 
+/* ---------- 검색 ---------- */
+const sKey = t => String(t || '').toLowerCase().replace(/[\s·\-\/()（）]/g, '');
+function searchItems(q) {
+  const k = sKey(q);
+  if (!k) return [];
+  const out = [];
+  state.markers.forEach(m => {
+    const it = m.place || m.stop;
+    if (!it) return;
+    const names = m.place ? [it.name] : [it.id, it.ko, it.zh, it.pt];
+    let best = -1;
+    names.forEach(n => {
+      const v = sKey(n);
+      if (!v) return;
+      if (v === k) best = Math.max(best, 3);
+      else if (v.startsWith(k)) best = Math.max(best, 2);
+      else if (v.includes(k)) best = Math.max(best, 1);
+    });
+    if (best >= 0) out.push({ m, score: best + (m.place ? 0.5 : 0) });
+  });
+  return out.sort((a, b) => b.score - a.score).slice(0, 20).map(x => x.m);
+}
+function renderResults() {
+  const q = $('q').value;
+  $('qClear').hidden = !q;
+  const box = $('sresults');
+  if (!q.trim()) { box.hidden = true; box.innerHTML = ''; return; }
+  const list = searchItems(q);
+  box.innerHTML = list.length ? list.map((m, i) => {
+    const it = m.place || m.stop;
+    const title = m.place ? it.name : (it.ko || it.zh || it.id);
+    const sub = m.place ? m.cat : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
+    return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${m.place ? colorOf(m.cat) : '#2B2724'}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
+  }).join('') : '<li class="none">시트에 없는 이름이에요. 시트에 추가하면 검색돼요.</li>';
+  box.hidden = false;
+  box.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', () => pickResult(list[+b.dataset.i])));
+}
+function pickResult(m) {
+  if (state.hidden.has(m.cat)) {
+    state.hidden.delete(m.cat);
+    const chip = $('legend').querySelector(`.chip[data-cat="${m.cat}"]`);
+    if (chip) chip.setAttribute('aria-pressed', 'true');
+    applyVisibility();
+  }
+  $('sresults').hidden = true;
+  $('q').blur();
+  state.map.panTo(m.marker.getPosition());
+  if ((state.map.getZoom() || 0) < 17) state.map.setZoom(17);
+  if (m.place) placePopup(m.place, m.marker); else stopPopup(m.stop, m.marker);
+}
+$('q').addEventListener('input', renderResults);
+$('q').addEventListener('focus', () => { if ($('q').value.trim()) renderResults(); });
+$('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const first = searchItems($('q').value)[0];
+    if (first) pickResult(first);
+  } else if (e.key === 'Escape') { $('sresults').hidden = true; $('q').blur(); }
+});
+$('qClear').addEventListener('click', () => { $('q').value = ''; renderResults(); $('q').focus(); });
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search') && !e.target.closest('#sresults')) $('sresults').hidden = true;
+});
+
 /* ---------- 지도 위 범례 상자 ---------- */
 function addMapLegend() {
   const box = document.createElement('div');
@@ -471,7 +580,7 @@ function drawMarkers() {
       icon: stopIcon(), title: stop.ko || stop.zh || stop.id, zIndex: 1
     });
     marker.addListener('click', () => stopPopup(stop, marker));
-    state.markers.push({ marker, cat: '버스 정류장' });
+    state.markers.push({ marker, cat: '버스 정류장', stop });
     bounds.extend(marker.getPosition()); count++;
   });
 
@@ -482,7 +591,7 @@ function drawMarkers() {
       icon: pinIcon(colorOf(cat)), title: place.name, zIndex: 10
     });
     marker.addListener('click', () => placePopup(place, marker));
-    state.markers.push({ marker, cat });
+    state.markers.push({ marker, cat, place });
     bounds.extend(marker.getPosition()); count++;
   });
 
