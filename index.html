@@ -286,7 +286,7 @@
     <button class="btn small" id="tripSwap" type="button">바꾸기</button>
     <button class="btn small" id="tripClear" type="button">지우기</button>
   </div>
-  <a class="btn small primary go-row" id="tripGo" target="_blank" rel="noopener" style="display:none">안내문 만들기</a>
+  <a class="btn small primary go-row trip-copy" id="tripGo" target="_blank" rel="noopener" style="display:none">안내문 만들기</a>
 </div>
 
 <aside class="sheet" id="sheet" aria-hidden="true">
@@ -770,9 +770,119 @@ const GEN_URL = 'https://claude.ai/artifact/DkT1UkwNc1cr4hSbGYTs7q';
 const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
 const tKey = t => t ? t.k + ':' + (t.k === 'stop' ? t.v.id : t.v.name) : '';
 const tLabel = t => t.k === 'stop' ? stopLabel(t.v) : t.v.name;
-// 생성기에 붙여넣는 글: 장소는 이름, 정류장은 한국어 이름 + 중문 이름 (예: 마각 교통허브 媽閣交通樞紐)
-const stopCopy = s => [s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') || s.id;
-const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : t.v.name;
+/* 생성기에 붙여넣는 글
+   정류장: 한국어 이름 + 중문 이름 + [번호:거리:구글장소ID:구글이름]
+   장소:   이름 + [400m 안 정류장들을 가까운 순으로 / 로 구분]
+   생성기가 이름은 출발지·도착지 칸에, [ ] 안은 승차·하차 정류장 후보로 씁니다.
+   구글장소ID가 있으면 생성기가 그 정류장으로 정확하게 가는 구글맵 길찾기 링크를 만듭니다. */
+const NEAR_M = 400;
+function distM(a, b) {
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function nearStops(p) {
+  if (!hasPos(p)) return [];
+  return state.data.stops.filter(hasPos)
+    .map(s => ({ s, d: Math.round(distM(p, s) / 10) * 10 }))
+    .filter(x => x.d <= NEAR_M)
+    .sort((x, y) => x.d - y.d)
+    .slice(0, 10);
+}
+const endStops = t => t.k === 'stop' ? (hasPos(t.v) ? [{ s: t.v, d: 0 }] : []) : nearStops(t.v);
+
+/* ---------- 구글맵의 버스 정류장 장소 찾기 (Places API) ----------
+   시트 좌표 60m 안에서 가장 가까운 구글맵 버스 정류장을 찾아 브라우저에 기억해 둡니다.
+   같은 정류장은 다시 찾지 않습니다. 못 찾은 정류장은 7일 뒤에 다시 찾아봅니다. */
+const GKEY = 'gstop:v1:';
+function gGet(id) {
+  try {
+    const raw = localStorage.getItem(GKEY + id);
+    if (!raw) return undefined;
+    const o = JSON.parse(raw);
+    if (!o.v && Date.now() - o.t > 7 * 864e5) return undefined;
+    return o.v;
+  } catch (e) { return undefined; }
+}
+function gSet(id, v) { try { localStorage.setItem(GKEY + id, JSON.stringify({ v, t: Date.now() })); } catch (e) {} }
+let placesLib = null;
+/* 하루 검색 한도: 이 브라우저에서 하루 150회까지만 구글에 검색합니다 (150 × 30일 = 4,500회, 월 무료 5,000회 안).
+   넘으면 그날은 자동 찾기를 멈추고, 생성기는 포르투갈어 이름 검색 링크를 씁니다. */
+const G_DAY_LIMIT = 150;
+const gDayKey = () => 'gstop:count:' + new Date().toISOString().slice(0, 10);
+function gTake() {
+  try {
+    const n = parseInt(localStorage.getItem(gDayKey()) || '0', 10);
+    if (n >= G_DAY_LIMIT) return false;
+    localStorage.setItem(gDayKey(), String(n + 1));
+    return true;
+  } catch (e) { return false; }
+}
+async function searchStop(s, types) {
+  if (!gTake()) throw new Error('하루 검색 한도(' + G_DAY_LIMIT + '회)를 넘었어요');
+  const { Place, SearchNearbyRankPreference } = placesLib;
+  const { places } = await Place.searchNearby({
+    fields: ['id', 'displayName'],
+    locationRestriction: { center: { lat: s.lat, lng: s.lng }, radius: 60 },
+    includedTypes: types,
+    maxResultCount: 3,
+    rankPreference: SearchNearbyRankPreference.DISTANCE
+  });
+  return (places || [])[0] || null;
+}
+async function findGStop(s) {
+  const c = gGet(s.id);
+  if (c !== undefined) return c;
+  try {
+    if (!placesLib) placesLib = await google.maps.importLibrary('places');
+    let p;
+    try { p = await searchStop(s, ['bus_stop', 'bus_station']); }
+    catch (e) {
+      if (/한도/.test(e.message)) throw e;
+      p = await searchStop(s, ['bus_station', 'transit_station']);
+    }
+    const v = p ? { pid: p.id, name: p.displayName || '' } : null;
+    gSet(s.id, v);
+    return v;
+  } catch (e) {
+    console.warn('구글맵 정류장 찾기 실패', s.id, e);
+    return undefined;
+  }
+}
+const token = x => {
+  const g = gGet(x.s.id);
+  return x.s.id + ':' + x.d + (g ? ':' + g.pid + ':' + encodeURIComponent(g.name) : '');
+};
+const stopCopy = s => ([s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') + ' [' + token({ s, d: 0 }) + ']').trim();
+const placeCopy = p => p.name + ' [' + nearStops(p).map(token).join('/') + ']';
+const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : placeCopy(t.v);
+
+let tripSeq = 0;
+function updateCopy() {
+  const A = state.from, B = state.to;
+  if (!(A && B)) return;
+  const text = tCopy(A) + ' → ' + tCopy(B);
+  document.querySelectorAll('.trip-copy').forEach(b => {
+    b.dataset.copyname = text;
+    b.textContent = state.gBusy ? '정류장 찾는 중…' : '안내문 만들기';
+    b.style.pointerEvents = state.gBusy ? 'none' : '';
+    b.style.opacity = state.gBusy ? '.6' : '';
+  });
+}
+async function prefetchTrip() {
+  const A = state.from, B = state.to;
+  if (!(A && B)) return;
+  const seq = ++tripSeq;
+  const todo = [...endStops(A), ...endStops(B)].map(x => x.s).filter(s => gGet(s.id) === undefined);
+  if (todo.length) {
+    state.gBusy = true; updateCopy();
+    await Promise.race([Promise.all(todo.map(findGStop)), new Promise(r => setTimeout(r, 6000))]);
+    if (seq !== tripSeq) return;
+    state.gBusy = false;
+  }
+  updateCopy();
+}
 
 function setTrip(which, k, v) {
   const t = { k, v }, key = tKey(t), other = which === 'from' ? 'to' : 'from';
@@ -796,8 +906,9 @@ function renderTripBar() {
   const go = $('tripGo');
   if (A && B) {
     go.href = GEN_URL;
-    go.dataset.copyname = tCopy(A) + ' → ' + tCopy(B);
     go.style.display = '';
+    updateCopy();
+    prefetchTrip();
   } else {
     go.style.display = 'none';
   }
@@ -843,10 +954,11 @@ function showTrip() {
     <div class="kind">출발과 도착</div>
     <h2>${esc(tLabel(A))}에서 ${esc(tLabel(B))}까지</h2>
     <div class="btns"><a class="btn" href="${walkUrl(B.v, A.v)}" target="_blank" rel="noopener">구글맵 도보 길찾기</a></div>
-    <div class="btns"><a class="btn primary" href="${GEN_URL}" target="_blank" rel="noopener" data-copyname="${esc(tCopy(A) + ' → ' + tCopy(B))}">안내문 만들기</a></div>
+    <div class="btns"><a class="btn primary trip-copy" href="${GEN_URL}" target="_blank" rel="noopener" data-copyname="">안내문 만들기</a></div>
     <p class="empty" style="margin:-10px 0 18px">누르면 출발지·도착지가 복사돼요. 생성기 출발지 칸에 붙여넣기만 하세요.</p>
     ${shut}
   `, null);
+  updateCopy();
 }
 
 async function copyName(text) {
