@@ -773,7 +773,24 @@ const tLabel = t => t.k === 'stop' ? stopLabel(t.v) : t.v.name;
 // 생성기에 붙여넣는 글: 장소는 이름, 정류장은 한국어 이름 + 중문 이름 + [번호] (예: 마각 교통허브 媽閣交通樞紐 [M3])
 // 생성기가 이름은 출발지·도착지 칸에, [번호]는 승차·하차 정류장 칸에 나눠 넣습니다.
 const stopCopy = s => ([s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') + ' [' + s.id + ']').trim();
-const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : t.v.name;
+// 장소를 고르면 400m(직선) 안의 정류장을 가까운 순으로 함께 넘깁니다: 세나도 광장 [M142:120/M134:180]
+const NEAR_M = 400;
+function distM(a, b) {
+  const R = 6371000, r = x => x * Math.PI / 180;
+  const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function placeCopy(p) {
+  if (!hasPos(p)) return p.name + ' []';
+  const near = state.data.stops.filter(hasPos)
+    .map(s => ({ id: s.id, d: Math.round(distM(p, s) / 10) * 10 }))
+    .filter(x => x.d <= NEAR_M)
+    .sort((x, y) => x.d - y.d)
+    .slice(0, 10);
+  return p.name + ' [' + near.map(x => x.id + ':' + x.d).join('/') + ']';
+}
+const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : placeCopy(t.v);
 
 function setTrip(which, k, v) {
   const t = { k, v }, key = tKey(t), other = which === 'from' ? 'to' : 'from';
