@@ -770,7 +770,9 @@ const GEN_URL = 'https://claude.ai/artifact/DkT1UkwNc1cr4hSbGYTs7q';
 const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
 const tKey = t => t ? t.k + ':' + (t.k === 'stop' ? t.v.id : t.v.name) : '';
 const tLabel = t => t.k === 'stop' ? stopLabel(t.v) : t.v.name;
-const tCopy = t => t.k === 'stop' ? t.v.id : t.v.name;
+// 생성기에 붙여넣는 글: 장소는 이름, 정류장은 한국어 이름 + 중문 이름 (예: 마각 교통허브 媽閣交通樞紐)
+const stopCopy = s => [s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') || s.id;
+const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : t.v.name;
 
 function setTrip(which, k, v) {
   const t = { k, v }, key = tKey(t), other = which === 'from' ? 'to' : 'from';
