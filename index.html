@@ -279,7 +279,8 @@ const CATS = [
   { key: '출입국',     color: '#00E64D' },  // 초록
   { key: '명소',       color: '#FDF569' },  // 노랑
   { key: '지역',       color: '#FF6FD8' },  // 분홍
-  { key: '기타',       color: '#FD7567' },  // 빨강
+  { key: '맛집',       color: '#FF8C1A' },  // 오렌지
+  { key: '기타',       color: '#9B6BE0' },  // 보라
   { key: '버스 정류장', color: '#2B2724', stop: true }
 ];
 
@@ -312,7 +313,7 @@ const esc = (s) => String(s == null ? '' : s)
 const hasPos = (o) => typeof o.lat === 'number' && typeof o.lng === 'number' && !isNaN(o.lat) && !isNaN(o.lng);
 const safeUrl = (u) => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
 const catOf = (c) => CATS.find(x => !x.stop && x.key === c) ? c : '기타';
-const colorOf = (c) => (CATS.find(x => x.key === c) || CATS[4]).color;
+const colorOf = (c) => (CATS.find(x => x.key === c) || CATS.find(x => x.key === '기타')).color;
 
 /* 이름 비교: 괄호 안, 띄어쓰기, '순환', '연결' 같은 말 빼고 비교 */
 function norm(s) {
@@ -649,7 +650,7 @@ function placePopup(place, marker) {
     hasShuttle ? { label: '셔틀정보', cls: 'shuttle', click: () => openPlace(place) } : null,
     rate ? { label: '객실 요금 확인', cls: 'rate', href: rate, sponsored: true } : null,
     mapLink ? { label: '구글맵', href: mapLink } : null,
-    info ? { label: '정보', href: info } : null
+    info ? { label: cat === '맛집' ? '메뉴' : '정보', href: info } : null
   ]);
 }
 
