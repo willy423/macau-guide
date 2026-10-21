@@ -226,6 +226,8 @@
   .iw { font-family: var(--sans); color: var(--ink); padding: 2px 4px 4px; max-width: 300px; }
   .iw-t { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.35; margin: 0 0 2px; word-break: keep-all; }
   .iw-s { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .iw-r { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 10px; }
+  .iw-r span { font-size: 12px; font-weight: 700; line-height: 1; padding: 4px 6px; border-radius: 5px; background: var(--paper-2); border: 1px solid var(--line); color: var(--ink); }
   .iw-b { display: flex; flex-wrap: wrap; gap: 6px; }
   .iw-b a, .iw-b button {
     display: inline-flex; align-items: center; min-height: 32px; padding: 0 11px;
@@ -707,10 +709,10 @@ function openPlace(place) {
 }
 
 /* ---------- 핀 말풍선 ---------- */
-function showPopup(marker, title, sub, buttons) {
+function showPopup(marker, title, sub, buttons, routes) {
   const el = document.createElement('div');
   el.className = 'iw';
-  el.innerHTML = `<div class="iw-t">${esc(title)}</div>${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}`;
+  el.innerHTML = `<div class="iw-t">${esc(title)}</div>${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => `<span>${esc(r)}</span>`).join('')}</div>` : ''}`;
   const row = document.createElement('div');
   row.className = 'iw-b';
   buttons.filter(Boolean).forEach(b => {
@@ -762,7 +764,7 @@ function stopPopup(stop, marker) {
     { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'stop', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
     { label: '구글맵 도보', href: walkUrl(stop) }
-  ]);
+  ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean));
 }
 
 /* ---------- 출발·도착 (장소·버스 정류장 섞어 고르기) ---------- */
