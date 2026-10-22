@@ -220,6 +220,7 @@
   .mlegend.closed ul { display: none; }
   .mlegend li { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.9; }
   .mlegend img { width: 11px; height: 17px; }
+  .mlegend .rdot { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 3px solid #2E9D57; margin: 0 1px; }
   .mlegend .sdot { width: 10px; height: 10px; border-radius: 50%; background: #2B2724; border: 2px solid #fff; box-shadow: 0 0 0 1px #2B2724; margin: 0 1px; }
 
   /* 핀 말풍선 */
@@ -318,8 +319,18 @@ const CATS = [
   { key: '지역',       color: '#FF6FD8' },  // 분홍
   { key: '맛집',       color: '#FF8C1A' },  // 오렌지
   { key: '기타',       color: '#9B6BE0' },  // 보라
-  { key: '버스 정류장', color: '#2B2724', stop: true }
+  { key: '버스 정류장', color: '#2B2724', stop: true },
+  { key: '경전철',     color: '#2E9D57', rail: true }
 ];
+
+// 경전철 노선 (시트 경전철 탭 '노선' 칸 값 → 한국어 이름, 선 색)
+// 색은 구분용으로 정한 것이며 경전철 공식 노선 색은 아님
+const RAIL_LINES = {
+  '氹仔線':   { ko: '타이파선', color: '#2E9D57' },  // 초록
+  '石排灣線': { ko: '석배만선', color: '#1F78C8' },  // 파랑
+  '橫琴線':   { ko: '횡금선',   color: '#C2185B' }   // 자주
+};
+const railLine = (l) => RAIL_LINES[l] || { ko: l, color: '#2E9D57' };
 
 // 셔틀 탭 '목적지'에 줄여 쓴 이름 → 장소 탭 이름 (띄어쓰기 없이)
 const ALIASES = {
@@ -349,7 +360,7 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const hasPos = (o) => typeof o.lat === 'number' && typeof o.lng === 'number' && !isNaN(o.lat) && !isNaN(o.lng);
 const safeUrl = (u) => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
-const catOf = (c) => CATS.find(x => !x.stop && x.key === c) ? c : '기타';
+const catOf = (c) => CATS.find(x => !x.stop && !x.rail && x.key === c) ? c : '기타';
 const colorOf = (c) => (CATS.find(x => x.key === c) || CATS.find(x => x.key === '기타')).color;
 
 /* 이름 비교: 괄호 안, 띄어쓰기, '순환', '연결' 같은 말 빼고 비교 */
@@ -406,9 +417,9 @@ function searchItems(q) {
   if (!k) return [];
   const out = [];
   state.markers.forEach(m => {
-    const it = m.place || m.stop;
+    const it = m.place || m.stop || m.rail;
     if (!it) return;
-    const names = m.place ? [it.name] : [it.id, it.ko, it.zh, it.pt];
+    const names = m.place ? [it.name] : m.rail ? [it.ko, it.zh, it.pt, '경전철'] : [it.id, it.ko, it.zh, it.pt];
     let best = -1;
     names.forEach(n => {
       const v = sKey(n);
@@ -428,10 +439,13 @@ function renderResults() {
   if (!q.trim()) { box.hidden = true; box.innerHTML = ''; return; }
   const list = searchItems(q);
   box.innerHTML = list.length ? list.map((m, i) => {
-    const it = m.place || m.stop;
+    const it = m.place || m.stop || m.rail;
     const title = m.place ? it.name : (it.ko || it.zh || it.id);
-    const sub = m.place ? m.cat : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
-    return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${m.place ? colorOf(m.cat) : '#2B2724'}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
+    const sub = m.place ? m.cat
+      : m.rail ? ['경전철', it.lines.map(l => railLine(l).ko).join('·'), it.ko ? it.zh : it.pt].filter(Boolean).join(' · ')
+      : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
+    const dot = m.place ? colorOf(m.cat) : m.rail ? railLine(it.lines[0]).color : '#2B2724';
+    return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${dot}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
   }).join('') : '<li class="none">시트에 없는 이름이에요. 시트에 추가하면 검색돼요.</li>';
   box.hidden = false;
   box.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', () => pickResult(list[+b.dataset.i])));
@@ -447,7 +461,9 @@ function pickResult(m) {
   $('q').blur();
   state.map.panTo(m.marker.getPosition());
   if ((state.map.getZoom() || 0) < 17) state.map.setZoom(17);
-  if (m.place) placePopup(m.place, m.marker); else stopPopup(m.stop, m.marker);
+  if (m.place) placePopup(m.place, m.marker);
+  else if (m.rail) railPopup(m.rail, m.marker);
+  else stopPopup(m.stop, m.marker);
 }
 $('q').addEventListener('input', renderResults);
 $('q').addEventListener('focus', () => { if ($('q').value.trim()) renderResults(); });
@@ -468,7 +484,7 @@ function addMapLegend() {
   const box = document.createElement('div');
   box.className = 'mlegend';
   box.innerHTML = `<button type="button" aria-expanded="true">범례</button><ul>${
-    CATS.map(c => `<li>${c.stop ? '<span class="sdot"></span>' : `<img alt="" src="${pinIcon(c.color).url}">`}${esc(c.key)}</li>`).join('')
+    CATS.map(c => `<li>${c.stop ? '<span class="sdot"></span>' : c.rail ? '<span class="rdot"></span>' : `<img alt="" src="${pinIcon(c.color).url}">`}${esc(c.key)}</li>`).join('')
   }</ul>`;
   const btn = box.querySelector('button');
   btn.addEventListener('click', () => {
@@ -497,6 +513,17 @@ function stopIcon() {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
     scaledSize: new google.maps.Size(16, 16),
     anchor: new google.maps.Point(8, 8)
+  };
+}
+
+function railIcon(color, transfer) {
+  const z = transfer ? 20 : 16, c = z / 2, r = transfer ? 7 : 5.5;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${z}" height="${z}" viewBox="0 0 ${z} ${z}">
+    <circle cx="${c}" cy="${c}" r="${r}" fill="#fff" stroke="${transfer ? '#2B2724' : color}" stroke-width="3"/></svg>`;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(z, z),
+    anchor: new google.maps.Point(c, c)
   };
 }
 
@@ -549,7 +576,8 @@ async function loadData() {
       stops: Array.isArray(d.stops) ? d.stops : [],
       routes: Array.isArray(d.routes) ? d.routes : [],
       shuttles: Array.isArray(d.shuttles) ? d.shuttles : [],
-      places: Array.isArray(d.places) ? d.places : []
+      places: Array.isArray(d.places) ? d.places : [],
+      rail: Array.isArray(d.rail) ? d.rail : []
     };
     state.fareByRoute = {};
     state.data.routes.forEach(r => { state.fareByRoute[String(r.no)] = r.fare; });
@@ -573,6 +601,43 @@ function drawMarkers() {
     });
     marker.addListener('click', () => stopPopup(stop, marker));
     state.markers.push({ marker, cat: '버스 정류장', stop });
+    bounds.extend(marker.getPosition()); count++;
+  });
+
+  /* 경전철: 노선별 선 + 역 (환승역은 한 번만) */
+  const lines = new Map();
+  state.data.rail.forEach(r => {
+    if (!lines.has(r.line)) lines.set(r.line, []);
+    lines.get(r.line).push(r);
+  });
+  lines.forEach((list, line) => {
+    const path = list.filter(hasPos)
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+      .map(r => ({ lat: r.lat, lng: r.lng }));
+    if (path.length < 2) return;
+    const pl = new google.maps.Polyline({
+      path, map: state.map, clickable: false, zIndex: 2,
+      strokeColor: railLine(line).color, strokeOpacity: 0.85, strokeWeight: 5
+    });
+    state.markers.push({ marker: pl, cat: '경전철' });
+  });
+  const stations = new Map();
+  state.data.rail.filter(hasPos).forEach(r => {
+    const k = r.zh || r.pt;
+    if (!stations.has(k)) stations.set(k, Object.assign({}, r, { lines: [] }));
+    const st = stations.get(k);
+    if (!st.lines.includes(r.line)) st.lines.push(r.line);
+    if (!st.ko && r.ko) st.ko = r.ko;
+    if (!st.map && r.map) st.map = r.map;
+  });
+  stations.forEach(st => {
+    const marker = new state.Marker({
+      position: { lat: st.lat, lng: st.lng }, map: state.map,
+      icon: railIcon(railLine(st.lines[0]).color, st.lines.length > 1),
+      title: st.ko || st.zh, zIndex: 5
+    });
+    marker.addListener('click', () => railPopup(st, marker));
+    state.markers.push({ marker, cat: '경전철', rail: st });
     bounds.extend(marker.getPosition()); count++;
   });
 
@@ -765,6 +830,17 @@ function stopPopup(stop, marker) {
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
     { label: '구글맵 도보', href: walkUrl(stop) }
   ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean));
+}
+
+function railPopup(st, marker) {
+  state.popup = () => railPopup(st, marker);
+  const title = st.ko || st.zh;
+  const sub = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
+  const lineNames = st.lines.map(l => railLine(l).ko);
+  const mapLink = safeUrl(st.map);
+  showPopup(marker, title, sub, [
+    mapLink ? { label: '구글맵', href: mapLink } : null
+  ], st.lines.length > 1 ? lineNames.concat('환승역') : lineNames);
 }
 
 /* ---------- 출발·도착 (장소·버스 정류장 섞어 고르기) ---------- */
