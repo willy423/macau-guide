@@ -948,7 +948,23 @@ const token = x => {
   return x.s.id + ':' + x.d + (g ? ':' + g.pid + ':' + encodeURIComponent(g.name) : '');
 };
 const stopCopy = s => ([s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') + ' [' + token({ s, d: 0 }) + ']').trim();
-const placeCopy = p => p.name + ' [' + nearStops(p).map(token).join('/') + ']';
+/* 400m 안 경전철역 (생성기 테스트 사본이 경전철 경로를 찾을 때 씀): L=역 이름=거리=구글맵 링크 */
+function nearRail(p) {
+  if (!hasPos(p)) return [];
+  const seen = new Map();
+  state.data.rail.filter(hasPos).forEach(r => {
+    const zh = String(r.zh || '').trim().replace(/站$/, '');
+    if (!zh) return;
+    const d = Math.round(distM(p, r) / 10) * 10;
+    if (d > NEAR_M) return;
+    const o = seen.get(zh);
+    if (!o || d < o.d) seen.set(zh, { zh, d, map: safeUrl(r.map) || (o && o.map) || '' });
+    else if (!o.map && safeUrl(r.map)) o.map = safeUrl(r.map);
+  });
+  return [...seen.values()].sort((a, b) => a.d - b.d)
+    .map(x => 'L=' + x.zh + '=' + x.d + '=' + encodeURIComponent(x.map));
+}
+const placeCopy = p => p.name + ' [' + nearStops(p).map(token).concat(nearRail(p)).join('/') + ']';
 const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : placeCopy(t.v);
 
 let tripSeq = 0;
