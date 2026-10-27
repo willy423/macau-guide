@@ -351,7 +351,7 @@ const state = {
   data: null,
   markers: [],              // { marker, cat }
   hidden: new Set(),
-  from: null, to: null,     // { k: "place" 또는 "stop", v: 장소·정류장 }
+  from: null, to: null,     // { k: "place"·"stop"·"rail", v: 장소·정류장·경전철역 }
   iw: null, popup: null     // 핀 말풍선, 지금 열린 말풍선 다시 그리기
 };
 
@@ -833,13 +833,27 @@ function stopPopup(stop, marker) {
   ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean), String(stop.pt || '').trim());
 }
 
+/* 경전철 역을 출발·도착으로 쓸 때는 장소처럼 다룸 (역 근처 400m 버스 정류장으로 안내)
+   이름 예: 경전철 운동장역 運動場 */
+function railPlace(st) {
+  if (!st._place) {
+    const ko = String(st.ko || '').trim();
+    const koName = ko ? (/역$/.test(ko) ? ko : ko + '역') : '';
+    st._place = { name: ['경전철', koName, st.zh].filter(Boolean).join(' '), lat: st.lat, lng: st.lng };
+  }
+  return st._place;
+}
 function railPopup(st, marker) {
   state.popup = () => railPopup(st, marker);
   const title = st.ko || st.zh;
   const sub = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
   const lineNames = st.lines.map(l => railLine(l).ko);
   const mapLink = safeUrl(st.map);
+  const rp = railPlace(st);
+  const same = t => tKey(t) === 'rail:' + rp.name;
   showPopup(marker, title, sub, [
+    { label: '출발', cls: 'go', on: same(state.from), click: () => setTrip('from', 'rail', rp) },
+    { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'rail', rp) },
     mapLink ? { label: '구글맵', href: mapLink } : null
   ], st.lines.length > 1 ? lineNames.concat('환승역') : lineNames);
 }
