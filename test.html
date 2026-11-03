@@ -1044,7 +1044,9 @@ $('trip').addEventListener('click', e => {
    순환선: 방향 1 다음에 방향 2를 이어 한 바퀴로 보고, 종점을 넘어 다시 도는 경우는 뺍니다.
    양방향: 방향마다 따로 봅니다.
    정류장: 고른 정류장 하나. 장소·경전철역: 400m 안 정류장들.
-   버스마다 한 줄만: 출발지·목적지에서 가장 가까운 승차·하차 정류장 (걷는 거리가 같으면 정거장 수가 적은 쪽) */
+   버스마다 한 줄만: 가장 짧게 가는 정거장 수보다 3정거장 이내로 더 걸리는 조합 중에서
+   출발지·목적지에서 가장 가까운 승차·하차 정류장 (걷는 거리가 같으면 정거장 수가 적은 쪽)
+   → 순환선을 한 바퀴 거의 다 도는 조합은 빠짐 */
 const BUS_MAX = 8;
 const busEnds = t => t.k === 'stop' ? [{ s: t.v, d: 0 }] : nearStops(t.v);
 function routeLines(r) {
@@ -1057,12 +1059,13 @@ function routeLines(r) {
   }
   return [d1, d2].filter(l => l.length);
 }
+const BUS_EXTRA = 3; // 가장 짧은 정거장 수보다 이만큼까지만 더 걸리는 조합 허용
 function directBuses(A, B) {
   const from = busEnds(A), to = busEnds(B);
   if (!from.length || !to.length) return null;
   const out = [];
   state.data.routes.forEach(r => {
-    let best = null;
+    const all = [];
     routeLines(r).forEach(line => {
       from.forEach(f => {
         const fid = String(f.s.id);
@@ -1073,13 +1076,16 @@ function directBuses(A, B) {
             if (tid === fid) return;
             const j = line.indexOf(tid, i + 1);
             if (j < 0) return;
-            const n = j - i, w = f.d + t.d;
-            if (!best || w < best.w || (w === best.w && n < best.n)) best = { r, f, t, n, w };
+            all.push({ r, f, t, n: j - i, w: f.d + t.d });
           });
         });
       });
     });
-    if (best) out.push(best);
+    if (!all.length) return;
+    const minN = Math.min(...all.map(x => x.n));
+    const ok = all.filter(x => x.n <= minN + BUS_EXTRA);
+    ok.sort((a, b) => a.w - b.w || a.n - b.n);
+    out.push(ok[0]);
   });
   return out.sort((a, b) => a.n - b.n || a.w - b.w);
 }
