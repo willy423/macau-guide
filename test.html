@@ -1044,7 +1044,7 @@ $('trip').addEventListener('click', e => {
    순환선: 방향 1 다음에 방향 2를 이어 한 바퀴로 보고, 종점을 넘어 다시 도는 경우는 뺍니다.
    양방향: 방향마다 따로 봅니다.
    정류장: 고른 정류장 하나. 장소·경전철역: 400m 안 정류장들.
-   버스마다 한 줄만: 정거장 수가 가장 적은 승차·하차 조합 (같으면 걷는 거리 합이 짧은 쪽) */
+   버스마다 한 줄만: 출발지·목적지에서 가장 가까운 승차·하차 정류장 (걷는 거리가 같으면 정거장 수가 적은 쪽) */
 const BUS_MAX = 8;
 const busEnds = t => t.k === 'stop' ? [{ s: t.v, d: 0 }] : nearStops(t.v);
 function routeLines(r) {
@@ -1074,7 +1074,7 @@ function directBuses(A, B) {
             const j = line.indexOf(tid, i + 1);
             if (j < 0) return;
             const n = j - i, w = f.d + t.d;
-            if (!best || n < best.n || (n === best.n && w < best.w)) best = { r, f, t, n, w };
+            if (!best || w < best.w || (w === best.w && n < best.n)) best = { r, f, t, n, w };
           });
         });
       });
