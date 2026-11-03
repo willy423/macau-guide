@@ -191,6 +191,8 @@
   .run dd { margin: 0; word-break: keep-all; }
   .run .note { margin: 8px 0 0; font-size: 13px; color: var(--muted); line-height: 1.6; }
   .run .from { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .bus-no { font-size: 17px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+  .run .far { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
   /* 상태 */
   .status {
@@ -220,12 +222,16 @@
   .mlegend.closed ul { display: none; }
   .mlegend li { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 1.9; }
   .mlegend img { width: 11px; height: 17px; }
+  .mlegend .rdot { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 3px solid #2E9D57; margin: 0 1px; }
   .mlegend .sdot { width: 10px; height: 10px; border-radius: 50%; background: #2B2724; border: 2px solid #fff; box-shadow: 0 0 0 1px #2B2724; margin: 0 1px; }
 
   /* 핀 말풍선 */
   .iw { font-family: var(--sans); color: var(--ink); padding: 2px 4px 4px; max-width: 300px; }
   .iw-t { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.35; margin: 0 0 2px; word-break: keep-all; }
+  .iw-e { font-size: 13px; color: var(--ink); line-height: 1.35; margin: 0 0 3px; }
   .iw-s { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
+  .iw-r { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 10px; }
+  .iw-r span { font-size: 12px; font-weight: 700; line-height: 1; padding: 4px 6px; border-radius: 5px; background: var(--paper-2); border: 1px solid var(--line); color: var(--ink); }
   .iw-b { display: flex; flex-wrap: wrap; gap: 6px; }
   .iw-b a, .iw-b button {
     display: inline-flex; align-items: center; min-height: 32px; padding: 0 11px;
@@ -316,8 +322,18 @@ const CATS = [
   { key: '지역',       color: '#FF6FD8' },  // 분홍
   { key: '맛집',       color: '#FF8C1A' },  // 오렌지
   { key: '기타',       color: '#9B6BE0' },  // 보라
-  { key: '버스 정류장', color: '#2B2724', stop: true }
+  { key: '버스 정류장', color: '#2B2724', stop: true },
+  { key: '경전철',     color: '#2E9D57', rail: true }
 ];
+
+// 경전철 노선 (시트 경전철 탭 '노선' 칸 값 → 한국어 이름, 선 색)
+// 색은 구분용으로 정한 것이며 경전철 공식 노선 색은 아님
+const RAIL_LINES = {
+  '氹仔線':   { ko: '타이파선', color: '#2E9D57' },  // 초록
+  '石排灣線': { ko: '석배만선', color: '#1F78C8' },  // 파랑
+  '橫琴線':   { ko: '횡금선',   color: '#C2185B' }   // 자주
+};
+const railLine = (l) => RAIL_LINES[l] || { ko: l, color: '#2E9D57' };
 
 // 셔틀 탭 '목적지'에 줄여 쓴 이름 → 장소 탭 이름 (띄어쓰기 없이)
 const ALIASES = {
@@ -337,7 +353,7 @@ const state = {
   data: null,
   markers: [],              // { marker, cat }
   hidden: new Set(),
-  from: null, to: null,     // { k: "place" 또는 "stop", v: 장소·정류장 }
+  from: null, to: null,     // { k: "place"·"stop"·"rail", v: 장소·정류장·경전철역 }
   iw: null, popup: null     // 핀 말풍선, 지금 열린 말풍선 다시 그리기
 };
 
@@ -347,7 +363,7 @@ const esc = (s) => String(s == null ? '' : s)
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const hasPos = (o) => typeof o.lat === 'number' && typeof o.lng === 'number' && !isNaN(o.lat) && !isNaN(o.lng);
 const safeUrl = (u) => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
-const catOf = (c) => CATS.find(x => !x.stop && x.key === c) ? c : '기타';
+const catOf = (c) => CATS.find(x => !x.stop && !x.rail && x.key === c) ? c : '기타';
 const colorOf = (c) => (CATS.find(x => x.key === c) || CATS.find(x => x.key === '기타')).color;
 
 /* 이름 비교: 괄호 안, 띄어쓰기, '순환', '연결' 같은 말 빼고 비교 */
@@ -404,9 +420,9 @@ function searchItems(q) {
   if (!k) return [];
   const out = [];
   state.markers.forEach(m => {
-    const it = m.place || m.stop;
+    const it = m.place || m.stop || m.rail;
     if (!it) return;
-    const names = m.place ? [it.name] : [it.id, it.ko, it.zh, it.pt];
+    const names = m.place ? [it.name] : m.rail ? [it.ko, it.zh, it.pt, '경전철'] : [it.id, it.ko, it.zh, it.pt];
     let best = -1;
     names.forEach(n => {
       const v = sKey(n);
@@ -426,10 +442,13 @@ function renderResults() {
   if (!q.trim()) { box.hidden = true; box.innerHTML = ''; return; }
   const list = searchItems(q);
   box.innerHTML = list.length ? list.map((m, i) => {
-    const it = m.place || m.stop;
+    const it = m.place || m.stop || m.rail;
     const title = m.place ? it.name : (it.ko || it.zh || it.id);
-    const sub = m.place ? m.cat : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
-    return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${m.place ? colorOf(m.cat) : '#2B2724'}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
+    const sub = m.place ? m.cat
+      : m.rail ? ['경전철', it.lines.map(l => railLine(l).ko).join('·'), it.ko ? it.zh : it.pt].filter(Boolean).join(' · ')
+      : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
+    const dot = m.place ? colorOf(m.cat) : m.rail ? railLine(it.lines[0]).color : '#2B2724';
+    return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${dot}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
   }).join('') : '<li class="none">시트에 없는 이름이에요. 시트에 추가하면 검색돼요.</li>';
   box.hidden = false;
   box.querySelectorAll('button[data-i]').forEach(b => b.addEventListener('click', () => pickResult(list[+b.dataset.i])));
@@ -445,7 +464,9 @@ function pickResult(m) {
   $('q').blur();
   state.map.panTo(m.marker.getPosition());
   if ((state.map.getZoom() || 0) < 17) state.map.setZoom(17);
-  if (m.place) placePopup(m.place, m.marker); else stopPopup(m.stop, m.marker);
+  if (m.place) placePopup(m.place, m.marker);
+  else if (m.rail) railPopup(m.rail, m.marker);
+  else stopPopup(m.stop, m.marker);
 }
 $('q').addEventListener('input', renderResults);
 $('q').addEventListener('focus', () => { if ($('q').value.trim()) renderResults(); });
@@ -466,7 +487,7 @@ function addMapLegend() {
   const box = document.createElement('div');
   box.className = 'mlegend';
   box.innerHTML = `<button type="button" aria-expanded="true">범례</button><ul>${
-    CATS.map(c => `<li>${c.stop ? '<span class="sdot"></span>' : `<img alt="" src="${pinIcon(c.color).url}">`}${esc(c.key)}</li>`).join('')
+    CATS.map(c => `<li>${c.stop ? '<span class="sdot"></span>' : c.rail ? '<span class="rdot"></span>' : `<img alt="" src="${pinIcon(c.color).url}">`}${esc(c.key)}</li>`).join('')
   }</ul>`;
   const btn = box.querySelector('button');
   btn.addEventListener('click', () => {
@@ -495,6 +516,17 @@ function stopIcon() {
     url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
     scaledSize: new google.maps.Size(16, 16),
     anchor: new google.maps.Point(8, 8)
+  };
+}
+
+function railIcon(color, transfer) {
+  const z = transfer ? 20 : 16, c = z / 2, r = transfer ? 7 : 5.5;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${z}" height="${z}" viewBox="0 0 ${z} ${z}">
+    <circle cx="${c}" cy="${c}" r="${r}" fill="#fff" stroke="${transfer ? '#2B2724' : color}" stroke-width="3"/></svg>`;
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(z, z),
+    anchor: new google.maps.Point(c, c)
   };
 }
 
@@ -547,7 +579,8 @@ async function loadData() {
       stops: Array.isArray(d.stops) ? d.stops : [],
       routes: Array.isArray(d.routes) ? d.routes : [],
       shuttles: Array.isArray(d.shuttles) ? d.shuttles : [],
-      places: Array.isArray(d.places) ? d.places : []
+      places: Array.isArray(d.places) ? d.places : [],
+      rail: Array.isArray(d.rail) ? d.rail : []
     };
     state.fareByRoute = {};
     state.data.routes.forEach(r => { state.fareByRoute[String(r.no)] = r.fare; });
@@ -571,6 +604,43 @@ function drawMarkers() {
     });
     marker.addListener('click', () => stopPopup(stop, marker));
     state.markers.push({ marker, cat: '버스 정류장', stop });
+    bounds.extend(marker.getPosition()); count++;
+  });
+
+  /* 경전철: 노선별 선 + 역 (환승역은 한 번만) */
+  const lines = new Map();
+  state.data.rail.forEach(r => {
+    if (!lines.has(r.line)) lines.set(r.line, []);
+    lines.get(r.line).push(r);
+  });
+  lines.forEach((list, line) => {
+    const path = list.filter(hasPos)
+      .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0))
+      .map(r => ({ lat: r.lat, lng: r.lng }));
+    if (path.length < 2) return;
+    const pl = new google.maps.Polyline({
+      path, map: state.map, clickable: false, zIndex: 2,
+      strokeColor: railLine(line).color, strokeOpacity: 0.85, strokeWeight: 5
+    });
+    state.markers.push({ marker: pl, cat: '경전철' });
+  });
+  const stations = new Map();
+  state.data.rail.filter(hasPos).forEach(r => {
+    const k = r.zh || r.pt;
+    if (!stations.has(k)) stations.set(k, Object.assign({}, r, { lines: [] }));
+    const st = stations.get(k);
+    if (!st.lines.includes(r.line)) st.lines.push(r.line);
+    if (!st.ko && r.ko) st.ko = r.ko;
+    if (!st.map && r.map) st.map = r.map;
+  });
+  stations.forEach(st => {
+    const marker = new state.Marker({
+      position: { lat: st.lat, lng: st.lng }, map: state.map,
+      icon: railIcon(railLine(st.lines[0]).color, st.lines.length > 1),
+      title: st.ko || st.zh, zIndex: 5
+    });
+    marker.addListener('click', () => railPopup(st, marker));
+    state.markers.push({ marker, cat: '경전철', rail: st });
     bounds.extend(marker.getPosition()); count++;
   });
 
@@ -707,10 +777,10 @@ function openPlace(place) {
 }
 
 /* ---------- 핀 말풍선 ---------- */
-function showPopup(marker, title, sub, buttons) {
+function showPopup(marker, title, sub, buttons, routes, en) {
   const el = document.createElement('div');
   el.className = 'iw';
-  el.innerHTML = `<div class="iw-t">${esc(title)}</div>${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}`;
+  el.innerHTML = `<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => `<span>${esc(r)}</span>`).join('')}</div>` : ''}`;
   const row = document.createElement('div');
   row.className = 'iw-b';
   buttons.filter(Boolean).forEach(b => {
@@ -750,7 +820,7 @@ function placePopup(place, marker) {
     rate ? { label: '객실 요금 확인', cls: 'rate', href: rate, sponsored: true } : null,
     mapLink ? { label: '구글맵', href: mapLink } : null,
     info ? { label: cat === '맛집' ? '메뉴' : '정보', href: info } : null
-  ]);
+  ], null, String(place.en || '').trim());
 }
 
 function stopPopup(stop, marker) {
@@ -762,11 +832,36 @@ function stopPopup(stop, marker) {
     { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'stop', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
     { label: '구글맵 도보', href: walkUrl(stop) }
-  ]);
+  ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean), String(stop.pt || '').trim());
+}
+
+/* 경전철 역을 출발·도착으로 쓸 때는 장소처럼 다룸 (역 근처 400m 버스 정류장으로 안내)
+   이름 예: 경전철 운동장역 運動場 */
+function railPlace(st) {
+  if (!st._place) {
+    const ko = String(st.ko || '').trim();
+    const koName = ko ? (/역$/.test(ko) ? ko : ko + '역') : '';
+    st._place = { name: ['경전철', koName, st.zh].filter(Boolean).join(' '), lat: st.lat, lng: st.lng };
+  }
+  return st._place;
+}
+function railPopup(st, marker) {
+  state.popup = () => railPopup(st, marker);
+  const title = st.ko || st.zh;
+  const sub = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
+  const lineNames = st.lines.map(l => railLine(l).ko);
+  const mapLink = safeUrl(st.map);
+  const rp = railPlace(st);
+  const same = t => tKey(t) === 'rail:' + rp.name;
+  showPopup(marker, title, sub, [
+    { label: '출발', cls: 'go', on: same(state.from), click: () => setTrip('from', 'rail', rp) },
+    { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'rail', rp) },
+    mapLink ? { label: '구글맵', href: mapLink } : null
+  ], st.lines.length > 1 ? lineNames.concat('환승역') : lineNames);
 }
 
 /* ---------- 출발·도착 (장소·버스 정류장 섞어 고르기) ---------- */
-const GEN_URL = 'https://claude.ai/artifact/AtV2AEvEyJksYiBGDE2DsK'; // 테스트 생성기
+const GEN_URL = 'https://claude.ai/artifact/DkT1UkwNc1cr4hSbGYTs7q'; // 테스트 생성기
 const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
 const tKey = t => t ? t.k + ':' + (t.k === 'stop' ? t.v.id : t.v.name) : '';
 const tLabel = t => t.k === 'stop' ? stopLabel(t.v) : t.v.name;
@@ -855,7 +950,23 @@ const token = x => {
   return x.s.id + ':' + x.d + (g ? ':' + g.pid + ':' + encodeURIComponent(g.name) : '');
 };
 const stopCopy = s => ([s.ko, s.zh].map(x => String(x || '').trim()).filter(Boolean).join(' ') + ' [' + token({ s, d: 0 }) + ']').trim();
-const placeCopy = p => p.name + ' [' + nearStops(p).map(token).join('/') + ']';
+/* 400m 안 경전철역 (생성기 테스트 사본이 경전철 경로를 찾을 때 씀): L=역 이름=거리=구글맵 링크 */
+function nearRail(p) {
+  if (!hasPos(p)) return [];
+  const seen = new Map();
+  state.data.rail.filter(hasPos).forEach(r => {
+    const zh = String(r.zh || '').trim().replace(/站$/, '');
+    if (!zh) return;
+    const d = Math.round(distM(p, r) / 10) * 10;
+    if (d > NEAR_M) return;
+    const o = seen.get(zh);
+    if (!o || d < o.d) seen.set(zh, { zh, d, map: safeUrl(r.map) || (o && o.map) || '' });
+    else if (!o.map && safeUrl(r.map)) o.map = safeUrl(r.map);
+  });
+  return [...seen.values()].sort((a, b) => a.d - b.d)
+    .map(x => 'L=' + x.zh + '=' + x.d + '=' + encodeURIComponent(x.map));
+}
+const placeCopy = p => p.name + ' [' + nearStops(p).map(token).concat(nearRail(p)).join('/') + ']';
 const tCopy = t => t.k === 'stop' ? stopCopy(t.v) : placeCopy(t.v);
 
 let tripSeq = 0;
@@ -928,6 +1039,71 @@ $('trip').addEventListener('click', e => {
   if (state.from && state.to) showTrip();
 });
 
+/* ---------- 바로 가는 버스 (갈아타지 않는 버스만) ----------
+   시트 「노선」 탭의 방향 1·방향 2 정류장 순서로 찾습니다.
+   순환선: 방향 1 다음에 방향 2를 이어 한 바퀴로 보고, 종점을 넘어 다시 도는 경우는 뺍니다.
+   양방향: 방향마다 따로 봅니다.
+   정류장: 고른 정류장 하나. 장소·경전철역: 400m 안 정류장들.
+   버스마다 한 줄만: 정거장 수가 가장 적은 승차·하차 조합 (같으면 걷는 거리 합이 짧은 쪽) */
+const BUS_MAX = 8;
+const busEnds = t => t.k === 'stop' ? [{ s: t.v, d: 0 }] : nearStops(t.v);
+function routeLines(r) {
+  const d1 = (Array.isArray(r.dir1) ? r.dir1 : []).map(String);
+  const d2 = (Array.isArray(r.dir2) ? r.dir2 : []).map(String);
+  if (String(r.type || '').indexOf('순환') !== -1) {
+    const line = d1.slice();
+    d2.forEach((c, i) => { if (!(i === 0 && c === line[line.length - 1])) line.push(c); });
+    return line.length ? [line] : [];
+  }
+  return [d1, d2].filter(l => l.length);
+}
+function directBuses(A, B) {
+  const from = busEnds(A), to = busEnds(B);
+  if (!from.length || !to.length) return null;
+  const out = [];
+  state.data.routes.forEach(r => {
+    let best = null;
+    routeLines(r).forEach(line => {
+      from.forEach(f => {
+        const fid = String(f.s.id);
+        line.forEach((c, i) => {
+          if (c !== fid) return;
+          to.forEach(t => {
+            const tid = String(t.s.id);
+            if (tid === fid) return;
+            const j = line.indexOf(tid, i + 1);
+            if (j < 0) return;
+            const n = j - i, w = f.d + t.d;
+            if (!best || n < best.n || (n === best.n && w < best.w)) best = { r, f, t, n, w };
+          });
+        });
+      });
+    });
+    if (best) out.push(best);
+  });
+  return out.sort((a, b) => a.n - b.n || a.w - b.w);
+}
+function busHtml(A, B) {
+  let body;
+  const hasOrder = state.data.routes.some(r => Array.isArray(r.dir1) && r.dir1.length);
+  const list = hasOrder ? directBuses(A, B) : [];
+  const far = x => x.d ? ` <span class="far">직선 ${x.d}m</span>` : '';
+  if (!hasOrder) body = '<p class="empty">노선 정류장 순서 자료를 불러오지 못했어요.</p>';
+  else if (list === null) body = '<p class="empty">출발지나 도착지 400m 안에 버스 정류장이 없어요.</p>';
+  else if (!list.length) body = '<p class="empty">갈아타지 않고 바로 가는 버스가 시트에 없어요.</p>';
+  else {
+    body = list.slice(0, BUS_MAX).map(x => `<div class="run">
+      <div class="bus-no">${esc(x.r.no)}번</div>
+      <dl>
+        <dt>타는 곳</dt><dd>${esc(stopLabel(x.f.s))}${far(x.f)}</dd>
+        <dt>내리는 곳</dt><dd>${esc(stopLabel(x.t.s))}${far(x.t)}</dd>
+        <dt>정거장</dt><dd>${x.n}정거장${x.r.fare ? ` · 요금 ${esc(x.r.fare)}파타카` : ''}</dd>
+      </dl></div>`).join('');
+    if (list.length > BUS_MAX) body += `<p class="empty">이 밖에 ${list.length - BUS_MAX}개 노선이 더 있어요. (정거장 수가 많은 순서라 뺐어요)</p>`;
+  }
+  return `<div class="sec"><h3>바로 가는 버스</h3>${body}</div>`;
+}
+
 function showTrip() {
   const A = state.from, B = state.to;
   let shut = '';
@@ -956,6 +1132,7 @@ function showTrip() {
     <div class="btns"><a class="btn" href="${walkUrl(B.v, A.v)}" target="_blank" rel="noopener">구글맵 도보 길찾기</a></div>
     <div class="btns"><a class="btn primary trip-copy" href="${GEN_URL}" target="_blank" rel="noopener" data-copyname="">안내문 만들기</a></div>
     <p class="empty" style="margin:-10px 0 18px">누르면 출발지·도착지가 복사돼요. 생성기 출발지 칸에 붙여넣기만 하세요.</p>
+    ${busHtml(A, B)}
     ${shut}
   `, null);
   updateCopy();
