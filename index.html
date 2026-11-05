@@ -227,6 +227,7 @@
 
   /* 핀 말풍선 */
   .iw { font-family: var(--sans); color: var(--ink); padding: 2px 4px 4px; max-width: 300px; }
+  .iw-p { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; margin: 0 0 10px; background: var(--paper-2); }
   .iw-t { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.35; margin: 0 0 2px; word-break: keep-all; }
   .iw-e { font-size: 13px; color: var(--ink); line-height: 1.35; margin: 0 0 3px; }
   .iw-s { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
@@ -447,7 +448,7 @@ function renderResults() {
     const title = m.place ? it.name : (it.ko || it.zh || it.id);
     const sub = m.place ? m.cat
       : m.rail ? ['경전철', it.lines.map(l => railLine(l).ko).join('·'), it.ko ? it.zh : it.pt].filter(Boolean).join(' · ')
-      : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
+      : ['버스 정류장', it.id ? SID(it.id) : '', it.zh].filter(Boolean).join(' · ');
     const dot = m.place ? colorOf(m.cat) : m.rail ? railLine(it.lines[0]).color : '#2B2724';
     return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${dot}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
   }).join('') : '<li class="none">시트에 없는 이름이에요. 시트에 추가하면 검색돼요.</li>';
@@ -685,7 +686,7 @@ function walkUrl(to, from) {
 /* 정류장 */
 function openStop(stop) {
   const title = stop.ko || stop.zh || stop.id;
-  const names = [stop.id, stop.zh, stop.pt].filter(Boolean).map(n => `<div>${esc(n)}</div>`).join('');
+  const names = [stop.id ? SID(stop.id) : '', stop.zh, stop.pt].filter(Boolean).map(n => `<div>${esc(n)}</div>`).join('');
 
   const dirs = String(stop.dirs || '').split('\n').map(s => s.trim()).filter(Boolean).map(line => {
     const i = line.indexOf(':');
@@ -778,10 +779,10 @@ function openPlace(place) {
 }
 
 /* ---------- 핀 말풍선 ---------- */
-function showPopup(marker, title, sub, buttons, routes, en) {
+function showPopup(marker, title, sub, buttons, routes, en, photo) {
   const el = document.createElement('div');
   el.className = 'iw';
-  el.innerHTML = `<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => `<span>${esc(r)}</span>`).join('')}</div>` : ''}`;
+  el.innerHTML = `${photo ? `<img class="iw-p" src="${esc(photo)}" alt="" width="800" height="600" onerror="this.remove()">` : ''}<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => `<span>${esc(r)}</span>`).join('')}</div>` : ''}`;
   const row = document.createElement('div');
   row.className = 'iw-b';
   buttons.filter(Boolean).forEach(b => {
@@ -804,6 +805,15 @@ function showPopup(marker, title, sub, buttons, routes, en) {
   state.iw.open({ map: state.map, anchor: marker });
 }
 
+/* 장소 사진: 시트 「장소」 탭 「사진」 칸의 파일 이름 → 깃허브 photos 폴더
+   파일 이름만 받음 (폴더 경로·이상한 글자는 무시). 사진이 없거나 못 불러오면 사진 없이 표시 */
+const PHOTO_DIR = 'photos/';
+function photoUrl(name) {
+  const n = String(name || '').trim();
+  if (!n || !/^[^\\/:*?"<>|]+\.(jpe?g|png|webp)$/i.test(n) || n.indexOf('..') !== -1) return '';
+  return PHOTO_DIR + encodeURIComponent(n);
+}
+
 function placePopup(place, marker) {
   const cat = catOf(place.cat);
   const rate = safeUrl(place.rate);
@@ -821,14 +831,14 @@ function placePopup(place, marker) {
     rate ? { label: '객실 요금 확인', cls: 'rate', href: rate, sponsored: true } : null,
     mapLink ? { label: '구글맵', href: mapLink } : null,
     info ? { label: cat === '맛집' ? '메뉴' : '정보', href: info } : null
-  ], null, String(place.en || '').trim());
+  ], null, String(place.en || '').trim(), photoUrl(place.photo));
 }
 
 function stopPopup(stop, marker) {
   const same = t => tKey(t) === 'stop:' + stop.id;
   state.popup = () => stopPopup(stop, marker);
   const title = stop.ko || stop.zh || stop.id;
-  showPopup(marker, title, [stop.id, stop.zh].filter(Boolean).join('  '), [
+  showPopup(marker, title, [stop.id ? SID(stop.id) : '', stop.zh].filter(Boolean).join('  '), [
     { label: '출발', cls: 'go', on: same(state.from), click: () => setTrip('from', 'stop', stop) },
     { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'stop', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
@@ -849,7 +859,8 @@ function railPlace(st) {
 function railPopup(st, marker) {
   state.popup = () => railPopup(st, marker);
   const title = st.ko || st.zh;
-  const sub = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
+  const subRaw = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
+  const sub = subRaw ? '정류장: ' + subRaw : '';
   const lineNames = st.lines.map(l => railLine(l).ko);
   const mapLink = safeUrl(st.map);
   const rp = railPlace(st);
@@ -863,7 +874,8 @@ function railPopup(st, marker) {
 
 /* ---------- 출발·도착 (장소·버스 정류장 섞어 고르기) ---------- */
 const GEN_URL = 'https://claude.ai/artifact/DkT1UkwNc1cr4hSbGYTs7q'; // 테스트 생성기
-const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
+const SID = id => '정류장 ID: ' + id; // 화면에 보이는 정류장 번호 앞에 붙임 (복사 글에는 안 붙임)
+const stopLabel = s => SID(s.id) + ' ' + (s.ko || s.zh || '');
 const tKey = t => t ? t.k + ':' + (t.k === 'stop' ? t.v.id : t.v.name) : '';
 const tLabel = t => t.k === 'stop' ? stopLabel(t.v) : t.v.name;
 /* 생성기에 붙여넣는 글
