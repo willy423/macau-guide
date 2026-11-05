@@ -849,7 +849,8 @@ function railPlace(st) {
 function railPopup(st, marker) {
   state.popup = () => railPopup(st, marker);
   const title = st.ko || st.zh;
-  const sub = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
+  const subRaw = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
+  const sub = subRaw ? '정류장: ' + subRaw : '';
   const lineNames = st.lines.map(l => railLine(l).ko);
   const mapLink = safeUrl(st.map);
   const rp = railPlace(st);
