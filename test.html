@@ -447,7 +447,7 @@ function renderResults() {
     const title = m.place ? it.name : (it.ko || it.zh || it.id);
     const sub = m.place ? m.cat
       : m.rail ? ['경전철', it.lines.map(l => railLine(l).ko).join('·'), it.ko ? it.zh : it.pt].filter(Boolean).join(' · ')
-      : ['버스 정류장', it.id, it.zh].filter(Boolean).join(' · ');
+      : ['버스 정류장', it.id ? SID(it.id) : '', it.zh].filter(Boolean).join(' · ');
     const dot = m.place ? colorOf(m.cat) : m.rail ? railLine(it.lines[0]).color : '#2B2724';
     return `<li><button type="button" data-i="${i}"><span class="sd" style="background:${dot}"></span><span><span class="st">${esc(title)}</span><span class="ss">${esc(sub)}</span></span></button></li>`;
   }).join('') : '<li class="none">시트에 없는 이름이에요. 시트에 추가하면 검색돼요.</li>';
@@ -685,7 +685,7 @@ function walkUrl(to, from) {
 /* 정류장 */
 function openStop(stop) {
   const title = stop.ko || stop.zh || stop.id;
-  const names = [stop.id, stop.zh, stop.pt].filter(Boolean).map(n => `<div>${esc(n)}</div>`).join('');
+  const names = [stop.id ? SID(stop.id) : '', stop.zh, stop.pt].filter(Boolean).map(n => `<div>${esc(n)}</div>`).join('');
 
   const dirs = String(stop.dirs || '').split('\n').map(s => s.trim()).filter(Boolean).map(line => {
     const i = line.indexOf(':');
@@ -828,7 +828,7 @@ function stopPopup(stop, marker) {
   const same = t => tKey(t) === 'stop:' + stop.id;
   state.popup = () => stopPopup(stop, marker);
   const title = stop.ko || stop.zh || stop.id;
-  showPopup(marker, title, [stop.id, stop.zh].filter(Boolean).join('  '), [
+  showPopup(marker, title, [stop.id ? SID(stop.id) : '', stop.zh].filter(Boolean).join('  '), [
     { label: '출발', cls: 'go', on: same(state.from), click: () => setTrip('from', 'stop', stop) },
     { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'stop', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
@@ -863,7 +863,8 @@ function railPopup(st, marker) {
 
 /* ---------- 출발·도착 (장소·버스 정류장 섞어 고르기) ---------- */
 const GEN_URL = 'https://claude.ai/artifact/DkT1UkwNc1cr4hSbGYTs7q'; // 테스트 생성기
-const stopLabel = s => s.id + ' ' + (s.ko || s.zh || '');
+const SID = id => '정류장 ID: ' + id; // 화면에 보이는 정류장 번호 앞에 붙임 (복사 글에는 안 붙임)
+const stopLabel = s => SID(s.id) + ' ' + (s.ko || s.zh || '');
 const tKey = t => t ? t.k + ':' + (t.k === 'stop' ? t.v.id : t.v.name) : '';
 const tLabel = t => t.k === 'stop' ? stopLabel(t.v) : t.v.name;
 /* 생성기에 붙여넣는 글
