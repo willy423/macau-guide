@@ -230,6 +230,11 @@
   .iw-p { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; margin: 0 0 10px; background: var(--paper-2); }
   /* 장소·정류장 사진: 자르지 않고 원래 비율 그대로 (16:9든 1:1이든 올린 모양 그대로) */
   .iw-p.nat { aspect-ratio: auto; object-fit: contain; max-height: 300px; }
+  .iw-c { position: relative; }
+  .iw-prev, .iw-next { position: absolute; top: calc(50% - 5px); transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 22px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0 0 3px; }
+  .iw-prev { left: 6px; } .iw-next { right: 6px; }
+  .iw-prev[hidden], .iw-next[hidden], .iw-n[hidden] { display: none; }
+  .iw-n { position: absolute; right: 8px; bottom: 18px; font-size: 11px; font-weight: 700; color: #fff; background: rgba(0,0,0,.55); border-radius: 999px; padding: 3px 8px; }
   .iw-t { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.35; margin: 0 0 2px; word-break: keep-all; }
   .iw-e { font-size: 13px; color: var(--ink); line-height: 1.35; margin: 0 0 3px; }
   .iw-s { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
@@ -799,7 +804,8 @@ function openPlace(place) {
 function showPopup(marker, title, sub, buttons, routes, en, photo, natural) {
   const el = document.createElement('div');
   el.className = 'iw';
-  el.innerHTML = `${photo ? `<img class="iw-p${natural ? ' nat' : ''}" src="${esc(photo)}" alt="" width="800" height="600" onerror="this.remove()">` : ''}<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => typeof r === 'string' ? `<button type="button" data-route="${esc(r)}" aria-label="${esc(r)}번 노선 정류장 보기">${esc(r)}</button>` : r.rail ? `<button type="button" data-rail="${esc(r.rail)}" aria-label="${esc(r.label)} 역 목록 보기">${esc(r.label)}</button>` : `<span>${esc(r.label)}</span>`).join('')}</div>` : ''}`;
+  const photos = (Array.isArray(photo) ? photo : [photo]).filter(Boolean);
+  el.innerHTML = `${photos.length ? `<div class="iw-c"><img class="iw-p${natural ? ' nat' : ''}" src="${esc(photos[0])}" alt="" width="800" height="600">${photos.length > 1 ? `<button type="button" class="iw-prev" aria-label="이전 사진">‹</button><button type="button" class="iw-next" aria-label="다음 사진">›</button><span class="iw-n"></span>` : ''}</div>` : ''}<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => typeof r === 'string' ? `<button type="button" data-route="${esc(r)}" aria-label="${esc(r)}번 노선 정류장 보기">${esc(r)}</button>` : r.rail ? `<button type="button" data-rail="${esc(r.rail)}" aria-label="${esc(r.label)} 역 목록 보기">${esc(r.label)}</button>` : `<span>${esc(r.label)}</span>`).join('')}</div>` : ''}`;
   const row = document.createElement('div');
   row.className = 'iw-b';
   buttons.filter(Boolean).forEach(b => {
@@ -820,6 +826,25 @@ function showPopup(marker, title, sub, buttons, routes, en, photo, natural) {
   el.appendChild(row);
   el.querySelectorAll('[data-route]').forEach(b => b.addEventListener('click', () => openRoute(b.dataset.route)));
   el.querySelectorAll('[data-rail]').forEach(b => b.addEventListener('click', () => openRail(b.dataset.rail)));
+  /* 사진: 여러 장이면 좌우 화살표로 한 장씩 넘김. 못 불러온 사진은 빼고, 하나도 없으면 사진 칸을 없앰 */
+  const box = el.querySelector('.iw-c');
+  if (box) {
+    const img = box.querySelector('img');
+    let list = photos.slice(), i = 0;
+    const show = () => {
+      if (!list.length) { box.remove(); return; }
+      i = (i + list.length) % list.length;
+      img.src = list[i];
+      const n = box.querySelector('.iw-n');
+      if (n) n.textContent = (i + 1) + ' / ' + list.length;
+      box.querySelectorAll('.iw-prev, .iw-next, .iw-n').forEach(x => { x.hidden = list.length < 2; });
+    };
+    img.addEventListener('error', () => { list.splice(i, 1); show(); });
+    const prev = box.querySelector('.iw-prev'), next = box.querySelector('.iw-next');
+    if (prev) prev.addEventListener('click', () => { i--; show(); });
+    if (next) next.addEventListener('click', () => { i++; show(); });
+    show();
+  }
   state.iw.setContent(el);
   state.iw.open({ map: state.map, anchor: marker });
 }
@@ -827,6 +852,10 @@ function showPopup(marker, title, sub, buttons, routes, en, photo, natural) {
 /* 장소·정류장 사진: 시트 「장소」·「정류장」 탭 「사진」 칸의 파일 이름 → 깃허브 photos 폴더
    파일 이름만 받음 (폴더 경로·이상한 글자는 무시). 사진이 없거나 못 불러오면 사진 없이 표시 */
 const PHOTO_DIR = 'photos/';
+/* 사진 칸에 쉼표로 여러 장 적을 수 있음 (예: T325-1.png, T325-2.png) */
+function photoUrls(names) {
+  return String(names || '').split(/[,\n]/).map(photoUrl).filter(Boolean);
+}
 function photoUrl(name) {
   const n = String(name || '').trim();
   if (!n || !/^[^\\/:*?"<>|]+\.(jpe?g|png|webp)$/i.test(n) || n.indexOf('..') !== -1) return '';
@@ -850,7 +879,7 @@ function placePopup(place, marker) {
     rate ? { label: '객실 요금 확인', cls: 'rate', href: rate, sponsored: true } : null,
     mapLink ? { label: '구글맵', href: mapLink } : null,
     info ? { label: cat === '맛집' ? '메뉴' : '정보', href: info } : null
-  ], null, String(place.en || '').trim(), photoUrl(place.photo), true);
+  ], null, String(place.en || '').trim(), photoUrls(place.photo), true);
 }
 
 function stopPopup(stop, marker) {
@@ -862,7 +891,7 @@ function stopPopup(stop, marker) {
     { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'stop', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
     { label: '구글맵 도보', href: walkUrl(stop) }
-  ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean), String(stop.pt || '').trim(), photoUrl(stop.photo), true);
+  ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean), String(stop.pt || '').trim(), photoUrls(stop.photo), true);
 }
 
 /* 경전철 역을 출발·도착으로 쓸 때는 장소처럼 다룸 (역 근처 400m 버스 정류장으로 안내)
