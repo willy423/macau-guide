@@ -266,18 +266,20 @@
     .sheet .grip { display: none; }
     .trip { left: auto; right: 16px; width: 380px; }
   }
+  .iw-r span { font-size: 12px; font-weight: 700; line-height: 1; padding: 4px 6px; border-radius: 5px; color: var(--muted); }
   .iw-r button:hover { border-color: var(--accent); color: var(--accent); }
   /* 노선 정류장 목록 (버스 번호 누르면 정보 창에 열림) */
   .rt-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
   .rt-tab { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 7px 12px; font-size: 13px; cursor: pointer; text-align: left; word-break: keep-all; }
   .rt-tab[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 700; }
   .rt-list { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
-  .rt-list::before { content: ""; position: absolute; left: 11px; top: 14px; bottom: 14px; width: 3px; background: var(--ink); border-radius: 2px; }
+  .rt-list::before { content: ""; position: absolute; left: 11px; top: 14px; bottom: 14px; width: 3px; background: var(--rc, var(--ink)); border-radius: 2px; }
   .rt-list li { position: relative; display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: center; padding: 8px 0; }
-  .rt-list .dot { width: 15px; height: 15px; border-radius: 50%; background: #fff; border: 3px solid var(--ink); position: relative; z-index: 1; }
-  .rt-list li.term .dot { background: #C9A227; }
+  .rt-list .dot { width: 15px; height: 15px; border-radius: 50%; background: #fff; border: 3px solid var(--rc, var(--ink)); position: relative; z-index: 1; }
+  .rt-list li.term .dot { background: var(--rc, #C9A227); }
   .rt-list .nm { font-size: 15px; font-weight: 700; line-height: 1.4; word-break: keep-all; }
   .rt-list .pt { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .rt-list .tr { font-size: 12px; color: var(--accent); margin-top: 2px; }
   .rt-list .cp { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 5px 9px; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
 </style>
 </head>
@@ -795,7 +797,7 @@ function openPlace(place) {
 function showPopup(marker, title, sub, buttons, routes, en, photo) {
   const el = document.createElement('div');
   el.className = 'iw';
-  el.innerHTML = `${photo ? `<img class="iw-p" src="${esc(photo)}" alt="" width="800" height="600" onerror="this.remove()">` : ''}<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => `<button type="button" data-route="${esc(r)}" aria-label="${esc(r)}번 노선 정류장 보기">${esc(r)}</button>`).join('')}</div>` : ''}`;
+  el.innerHTML = `${photo ? `<img class="iw-p" src="${esc(photo)}" alt="" width="800" height="600" onerror="this.remove()">` : ''}<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => typeof r === 'string' ? `<button type="button" data-route="${esc(r)}" aria-label="${esc(r)}번 노선 정류장 보기">${esc(r)}</button>` : r.rail ? `<button type="button" data-rail="${esc(r.rail)}" aria-label="${esc(r.label)} 역 목록 보기">${esc(r.label)}</button>` : `<span>${esc(r.label)}</span>`).join('')}</div>` : ''}`;
   const row = document.createElement('div');
   row.className = 'iw-b';
   buttons.filter(Boolean).forEach(b => {
@@ -815,6 +817,7 @@ function showPopup(marker, title, sub, buttons, routes, en, photo) {
   });
   el.appendChild(row);
   el.querySelectorAll('[data-route]').forEach(b => b.addEventListener('click', () => openRoute(b.dataset.route)));
+  el.querySelectorAll('[data-rail]').forEach(b => b.addEventListener('click', () => openRail(b.dataset.rail)));
   state.iw.setContent(el);
   state.iw.open({ map: state.map, anchor: marker });
 }
@@ -875,7 +878,6 @@ function railPopup(st, marker) {
   const title = st.ko || st.zh;
   const subRaw = [st.ko ? st.zh : '', st.pt].filter(Boolean).join('  ');
   const sub = subRaw ? '정류장: ' + subRaw : '';
-  const lineNames = st.lines.map(l => railLine(l).ko);
   const mapLink = safeUrl(st.map);
   const rp = railPlace(st);
   const same = t => tKey(t) === 'rail:' + rp.name;
@@ -883,7 +885,7 @@ function railPopup(st, marker) {
     { label: '출발', cls: 'go', on: same(state.from), click: () => setTrip('from', 'rail', rp) },
     { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'rail', rp) },
     mapLink ? { label: '구글맵', href: mapLink } : null
-  ], st.lines.length > 1 ? lineNames.concat('환승역') : lineNames);
+  ], st.lines.map(l => ({ label: railLine(l).ko, rail: l })).concat(st.lines.length > 1 ? [{ label: '환승역' }] : []));
 }
 
 /* ---------- 출발·도착 (장소·버스 정류장 섞어 고르기) ---------- */
@@ -1107,6 +1109,32 @@ function openRoute(no, d) {
     <div class="rt-tabs" role="tablist">${dirs.map((x, i) => `<button class="rt-tab" type="button" role="tab" aria-selected="${i === k}" data-rd="${i}">${esc(x.label)}</button>`).join('')}</div>
     <ol class="rt-list">${items}</ol>`, null);
   $('sheetBody').querySelectorAll('[data-rd]').forEach(b => b.addEventListener('click', () => openRoute(no, +b.dataset.rd)));
+}
+
+/* 경전철 노선 역 목록: 역 말풍선의 노선 이름을 누르면 정보 창에 열림 (시트 「경전철」 탭 '순서' 기준) */
+function openRail(line, d) {
+  const L = railLine(line);
+  const all = state.data.rail.filter(r => r.line === line)
+    .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+  const head = `<div class="kind"><span class="dot" style="background:${L.color}"></span>경전철 노선</div><h2>${esc(L.ko)} ${esc(line)}</h2>`;
+  if (!all.length) { openSheet(head + `<p class="empty">시트 「경전철」 탭에 ${esc(L.ko)} 역이 없어요.</p>`, null); return; }
+  const key = r => r.zh || r.pt;
+  const linesOf = r => [...new Set(state.data.rail.filter(x => key(x) === key(r)).map(x => x.line))];
+  const transfers = all.filter(r => linesOf(r).length > 1).length;
+  const dirs = [all, all.slice().reverse()].map(list => ({ list, label: `${list[list.length - 1].zh || list[list.length - 1].pt} 방면` }));
+  const k = all.length > 1 ? Math.min(Number(d) || 0, 1) : 0;
+  const list = dirs[k].list;
+  const items = list.map((r, i) => {
+    const other = linesOf(r).filter(x => x !== line).map(x => railLine(x).ko);
+    const copy = railPlace(Object.assign({}, r)).name;
+    return `<li class="${i === 0 || i === list.length - 1 ? 'term' : ''}"><span class="dot"></span>
+      <div><div class="nm">${esc(r.zh || '')}${r.ko ? ` ${esc(r.ko)}` : ''}</div>${r.pt ? `<div class="pt">${esc(r.pt)}</div>` : ''}${other.length ? `<div class="tr">환승: ${esc(other.join(', '))}</div>` : ''}</div>
+      <button class="cp" type="button" data-copyname="${esc(copy)}">복사</button></li>`;
+  }).join('');
+  openSheet(head + `<div class="names"><div>역 ${all.length}개${transfers ? ` · 환승역 ${transfers}곳` : ''}</div></div>
+    ${all.length > 1 ? `<div class="rt-tabs" role="tablist">${dirs.map((x, i) => `<button class="rt-tab" type="button" role="tab" aria-selected="${i === k}" data-rd="${i}">${esc(x.label)}</button>`).join('')}</div>` : ''}
+    <ol class="rt-list" style="--rc:${L.color}">${items}</ol>`, null);
+  $('sheetBody').querySelectorAll('[data-rd]').forEach(b => b.addEventListener('click', () => openRail(line, +b.dataset.rd)));
 }
 
 const BUS_MAX = 8;
