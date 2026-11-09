@@ -228,6 +228,8 @@
   /* 핀 말풍선 */
   .iw { font-family: var(--sans); color: var(--ink); padding: 2px 4px 4px; max-width: 300px; }
   .iw-p { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 8px; margin: 0 0 10px; background: var(--paper-2); }
+  /* 장소·정류장 사진: 자르지 않고 원래 비율 그대로 (16:9든 1:1이든 올린 모양 그대로) */
+  .iw-p.nat { aspect-ratio: auto; object-fit: contain; max-height: 300px; }
   .iw-t { font-family: var(--serif); font-size: 17px; font-weight: 700; line-height: 1.35; margin: 0 0 2px; word-break: keep-all; }
   .iw-e { font-size: 13px; color: var(--ink); line-height: 1.35; margin: 0 0 3px; }
   .iw-s { font-size: 12px; color: var(--muted); margin: 0 0 10px; }
@@ -794,10 +796,10 @@ function openPlace(place) {
 }
 
 /* ---------- 핀 말풍선 ---------- */
-function showPopup(marker, title, sub, buttons, routes, en, photo) {
+function showPopup(marker, title, sub, buttons, routes, en, photo, natural) {
   const el = document.createElement('div');
   el.className = 'iw';
-  el.innerHTML = `${photo ? `<img class="iw-p" src="${esc(photo)}" alt="" width="800" height="600" onerror="this.remove()">` : ''}<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => typeof r === 'string' ? `<button type="button" data-route="${esc(r)}" aria-label="${esc(r)}번 노선 정류장 보기">${esc(r)}</button>` : r.rail ? `<button type="button" data-rail="${esc(r.rail)}" aria-label="${esc(r.label)} 역 목록 보기">${esc(r.label)}</button>` : `<span>${esc(r.label)}</span>`).join('')}</div>` : ''}`;
+  el.innerHTML = `${photo ? `<img class="iw-p${natural ? ' nat' : ''}" src="${esc(photo)}" alt="" width="800" height="600" onerror="this.remove()">` : ''}<div class="iw-t">${esc(title)}</div>${en ? `<div class="iw-e">${esc(en)}</div>` : ''}${sub ? `<div class="iw-s">${esc(sub)}</div>` : '<div class="iw-s"></div>'}${routes && routes.length ? `<div class="iw-r" aria-label="정차 버스">${routes.map(r => typeof r === 'string' ? `<button type="button" data-route="${esc(r)}" aria-label="${esc(r)}번 노선 정류장 보기">${esc(r)}</button>` : r.rail ? `<button type="button" data-rail="${esc(r.rail)}" aria-label="${esc(r.label)} 역 목록 보기">${esc(r.label)}</button>` : `<span>${esc(r.label)}</span>`).join('')}</div>` : ''}`;
   const row = document.createElement('div');
   row.className = 'iw-b';
   buttons.filter(Boolean).forEach(b => {
@@ -822,7 +824,7 @@ function showPopup(marker, title, sub, buttons, routes, en, photo) {
   state.iw.open({ map: state.map, anchor: marker });
 }
 
-/* 장소 사진: 시트 「장소」 탭 「사진」 칸의 파일 이름 → 깃허브 photos 폴더
+/* 장소·정류장 사진: 시트 「장소」·「정류장」 탭 「사진」 칸의 파일 이름 → 깃허브 photos 폴더
    파일 이름만 받음 (폴더 경로·이상한 글자는 무시). 사진이 없거나 못 불러오면 사진 없이 표시 */
 const PHOTO_DIR = 'photos/';
 function photoUrl(name) {
@@ -848,7 +850,7 @@ function placePopup(place, marker) {
     rate ? { label: '객실 요금 확인', cls: 'rate', href: rate, sponsored: true } : null,
     mapLink ? { label: '구글맵', href: mapLink } : null,
     info ? { label: cat === '맛집' ? '메뉴' : '정보', href: info } : null
-  ], null, String(place.en || '').trim(), photoUrl(place.photo));
+  ], null, String(place.en || '').trim(), photoUrl(place.photo), true);
 }
 
 function stopPopup(stop, marker) {
@@ -860,7 +862,7 @@ function stopPopup(stop, marker) {
     { label: '도착', cls: 'arrive', on: same(state.to), click: () => setTrip('to', 'stop', stop) },
     { label: '버스 정보', cls: 'shuttle', click: () => openStop(stop) },
     { label: '구글맵 도보', href: walkUrl(stop) }
-  ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean), String(stop.pt || '').trim());
+  ], (Array.isArray(stop.routes) ? stop.routes : String(stop.routes || '').split(',')).map(r => String(r).trim()).filter(Boolean), String(stop.pt || '').trim(), photoUrl(stop.photo), true);
 }
 
 /* 경전철 역을 출발·도착으로 쓸 때는 장소처럼 다룸 (역 근처 400m 버스 정류장으로 안내)
